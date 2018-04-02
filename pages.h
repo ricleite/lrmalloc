@@ -1,0 +1,17 @@
+
+#ifndef __PAGES_H
+#define __PAGES_H
+
+#include <cinttypes>
+#include "defines.h"
+
+// return page address for page containing a
+#define PAGE_ADDR2BASE(a) \
+    ((void*)((uintptr)(a) & ~PAGE_MASK))
+
+// returns a set of continous pages, totaling to size bytes
+void* PageAlloc(size_t size);
+// free a set of continous pages, totaling to size bytes
+void PageFree(void* ptr, size_t size);
+
+#endif // __PAGES_H
