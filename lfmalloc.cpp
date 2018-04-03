@@ -692,8 +692,6 @@ void lf_free(void* ptr) noexcept
         // CAS success, can free block
         if (newAnchor.state == SB_EMPTY)
         {
-            ProcHeap* heap = desc->heap;
-
             // unregister descriptor
             UnregisterDesc(desc);
 
