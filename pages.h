@@ -11,6 +11,9 @@
 
 // returns a set of continous pages, totaling to size bytes
 void* PageAlloc(size_t size);
+// explictely allow overcommiting
+// used for array-based page map
+void* PageAllocOvercommit(size_t size);
 // free a set of continous pages, totaling to size bytes
 void PageFree(void* ptr, size_t size);
 

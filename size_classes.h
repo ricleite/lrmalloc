@@ -9,6 +9,7 @@
 // number of size classes
 // idx 0 reserved for large size classes
 #define MAX_SZ_IDX 40
+#define LG_MAX_SIZE_IDX 6
 // size of the largest size class
 #define MAX_SZ (2 << 14)
 

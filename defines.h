@@ -2,6 +2,8 @@
 #ifndef __DEFINES_H__
 #define __DEFINES_H__
 
+#include <cinttypes>
+
 // a cache line is 64 bytes
 #define LG_CACHELINE    6
 // a page is 4KB

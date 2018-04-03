@@ -10,6 +10,7 @@
 #include "lfmalloc.h"
 #include "size_classes.h"
 #include "pages.h"
+#include "pagemap.h"
 #include "log.h"
 
 // global variables
@@ -34,6 +35,52 @@ void GetActive(ActiveDescriptor* active, Descriptor** desc, uint64_t* credits)
 
     if (credits)
         *credits = (uint64_t)active & CREDITS_MASK;
+}
+
+// (un)register descriptor pages with pagemap
+// all pages used by the descriptor will point to desc in
+//  the pagemap
+void UpdatePageMap(Descriptor* desc, Descriptor* value)
+{
+    char* superblock = desc->superblock;
+    ASSERT(superblock);
+
+    PageInfo info;
+    info.desc = value;
+
+    // large allocation, don't need to (un)register every page
+    // just first
+    if (!desc->heap)
+        sPageMap.SetPageInfo(superblock, info);
+    else
+    {
+        // small allocation, (un)register every page
+        // could *technically* optimize if blockSize >>> page, 
+        //  but let's not worry about that
+        size_t sbSize = desc->heap->sizeclass->sbSize;
+        // sbSize is a multiple of page
+        ASSERT((sbSize & PAGE_MASK) == 0);
+        for (size_t idx = 0; idx < sbSize; idx += PAGE)
+           sPageMap.SetPageInfo(superblock + idx, info); 
+    }
+}
+
+void RegisterDesc(Descriptor* desc)
+{
+    UpdatePageMap(desc, desc);
+}
+
+// unregister descriptor before superblock deletion
+// can only be done when superblock is about to be free'd to OS
+void UnregisterDesc(Descriptor* desc)
+{
+    UpdatePageMap(desc, nullptr);
+}
+
+Descriptor* GetDescriptorForPtr(void* ptr)
+{
+    PageInfo info = sPageMap.GetPageInfo((char*)ptr);
+    return info.desc;
 }
 
 void* MallocFromActive(ProcHeap* heap)
@@ -116,9 +163,6 @@ void* MallocFromActive(ProcHeap* heap)
 
     LOG_DEBUG("Heap %p, Desc %p, ptr %p", heap, desc, ptr);
 
-    // save descriptor (superblock) that owns block
-    *(Descriptor**)ptr = desc;
-    ptr = ptr + sizeof(Descriptor*);
     return (void*)ptr;
 }
 
@@ -262,8 +306,6 @@ void* MallocFromPartial(ProcHeap* heap)
     if (credits > 0)
         UpdateActive(heap, desc, credits);
 
-    *(Descriptor**)ptr = desc;
-    ptr = ptr + sizeof(Descriptor*);
     return (void*)ptr;
 }
 
@@ -313,12 +355,11 @@ void* MallocFromNewSB(ProcHeap* heap)
         return nullptr;
     }
 
+    // register new descriptor
+    RegisterDesc(desc);
+
     char* ptr = desc->superblock;
-    *(Descriptor**)ptr = desc;
-    LOG_DEBUG("desc: %p, ptr: %p, *ptr: %p",
-        desc, ptr, *(Descriptor**)ptr);
-    ptr = ptr + sizeof(Descriptor*);
-    LOG_DEBUG("ptr: %p", ptr);
+    LOG_DEBUG("desc: %p, ptr: %p", desc, ptr);
     return (void*)ptr;
 }
 
@@ -444,7 +485,7 @@ void* lf_malloc(size_t size) noexcept
     // large block allocation
     if (UNLIKELY(!heap))
     {
-        size_t pages = PAGE_CEILING(size + sizeof(Descriptor*));
+        size_t pages = PAGE_CEILING(size);
         Descriptor* desc = DescAlloc();
         ASSERT(desc);
 
@@ -461,9 +502,9 @@ void* lf_malloc(size_t size) noexcept
 
         desc->anchor.store(anchor);
 
+        RegisterDesc(desc);
+
         char* ptr = desc->superblock;
-        *(Descriptor**)ptr = desc;
-        ptr = ptr + sizeof(Descriptor*);
         LOG_DEBUG("large, ptr: %p", ptr);
         return (void*)ptr;
     }
@@ -505,17 +546,12 @@ void* lf_realloc(void* ptr, size_t size) noexcept
     void* newPtr = lf_malloc(size);
     if (LIKELY(ptr && newPtr))
     {
-        Descriptor* desc = *(Descriptor**)((char*)ptr - sizeof(Descriptor*));
-        // compute index of ptr
-        uint64_t blockSize = desc->blockSize;
-        uint64_t idx = ((char*)ptr - desc->superblock) / blockSize;
-        // recompute ptr, 
-        // @todo: remove when descriptor ptrs are no longer stored in "user" memory
-        ptr = (char*)(desc->superblock + idx * blockSize + sizeof(Descriptor*));
+        Descriptor* desc = GetDescriptorForPtr(ptr);
+        ASSERT(desc);
 
+        uint64_t blockSize = desc->blockSize;
         // prevent invalid memory access if size < blockSize
-        size = std::max(size, sizeof(Descriptor*));
-        blockSize = std::min(size, blockSize) - sizeof(Descriptor*);
+        blockSize = std::min(size, blockSize);
         memcpy(newPtr, ptr, blockSize);
     }
 
@@ -530,7 +566,7 @@ size_t lf_malloc_usable_size(void* ptr) noexcept
     if (UNLIKELY(ptr == nullptr))
         return 0;
 
-    Descriptor* desc = *(Descriptor**)((char*)ptr - sizeof(Descriptor*));
+    Descriptor* desc = GetDescriptorForPtr(ptr);
     return desc->blockSize;
 }
 
@@ -539,18 +575,16 @@ int lf_posix_memalign(void** memptr, size_t alignment, size_t size) noexcept
 {
     LOG_DEBUG();
     // @todo: this is so very inefficient
-    size = std::max(alignment, size) * 2 + sizeof(Descriptor*);
+    size = std::max(alignment, size) * 2;
     char* ptr = (char*)malloc(size);
     if (!ptr)
         return ENOMEM;
 
     LOG_DEBUG("original ptr: %p", ptr);
-    Descriptor* desc = *(Descriptor**)((char*)ptr - sizeof(Descriptor*));
-    ptr = ALIGN_ADDR(ptr + sizeof(Descriptor*), alignment);
+    ptr = ALIGN_ADDR(ptr, alignment);
     // this works fine for a couple reasons
     // 1) when freeing, we end up following Descriptor* and don't really use ptr
     // 2) twice the size of (alignment + size) is always enough to align
-    *(Descriptor**)(ptr - sizeof(Descriptor*)) = desc;
     LOG_DEBUG("provided ptr: %p", ptr);
     *memptr = ptr;
     return 0;
@@ -594,8 +628,15 @@ void lf_free(void* ptr) noexcept
     if (UNLIKELY(!ptr))
         return;
 
-    ptr = (void*)((char*)ptr - sizeof(Descriptor*));
-    Descriptor* desc = *(Descriptor**)ptr;
+    Descriptor* desc = GetDescriptorForPtr(ptr);
+    if (UNLIKELY(!desc))
+    {
+        // @todo: this can happen with dynamic loading
+        // need to print correct message
+        ASSERT(desc);
+        return;
+    }
+
     ProcHeap* heap = desc->heap;
 
     char* superblock = desc->superblock;
@@ -652,6 +693,9 @@ void lf_free(void* ptr) noexcept
         if (newAnchor.state == SB_EMPTY)
         {
             ProcHeap* heap = desc->heap;
+
+            // unregister descriptor
+            UnregisterDesc(desc);
 
             // free superblock
             PageFree(superblock, heap->sizeclass->sbSize);

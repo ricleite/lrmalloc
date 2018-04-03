@@ -2,7 +2,6 @@
 #ifndef __LFMALLOC_H
 #define __LFMALLOC_H
 
-#include <cinttypes>
 #include <atomic>
 
 #include "defines.h"

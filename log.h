@@ -3,6 +3,7 @@
 #define __LOG_H
 
 #include <cstdio>
+#include <cstdlib>
 
 #define LFMALLOC_DEBUG 0
 

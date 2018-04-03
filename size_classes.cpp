@@ -336,7 +336,7 @@ void InitSizeClass()
     for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx)
     {
         SizeClassData const& sc = SizeClasses[scIdx];
-        size_t blockSize = sc.blockSize - sizeof(Descriptor*);
+        size_t blockSize = sc.blockSize;
         while (lookupIdx <= blockSize)
         {
             SizeClassLookup[lookupIdx] = scIdx;

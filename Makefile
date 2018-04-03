@@ -19,8 +19,8 @@ LDFLAGS=-ldl -pthread $(DFLAGS)
 
 default: lfmalloc.so lfmalloc.a
 
-lfmalloc.so: lfmalloc.cpp size_classes.cpp pages.cpp
-	$(CCX) $(LDFLAGS) $(CXXFLAGS) -o lfmalloc.so lfmalloc.cpp size_classes.cpp pages.cpp
+lfmalloc.so: lfmalloc.cpp size_classes.cpp pages.cpp pagemap.cpp
+	$(CCX) $(LDFLAGS) $(CXXFLAGS) -o lfmalloc.so lfmalloc.cpp size_classes.cpp pages.cpp pagemap.cpp
 
 lfmalloc.a: lfmalloc.so
 	ar rcs lfmalloc.a lfmalloc.so
