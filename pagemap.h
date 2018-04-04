@@ -36,7 +36,7 @@ struct PageInfo
 
 #define PM_SZ ((1ULL << PM_SB) * sizeof(PageInfo))
 
-static_assert(sizeof(PageInfo) == sizeof(uint64_t));
+static_assert(sizeof(PageInfo) == sizeof(uint64_t), "Invalid PageInfo size");
 
 // lock free page map
 // lazy-initialized on first call
