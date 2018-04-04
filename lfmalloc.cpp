@@ -40,41 +40,48 @@ void GetActive(ActiveDescriptor* active, Descriptor** desc, uint64_t* credits)
 // (un)register descriptor pages with pagemap
 // all pages used by the descriptor will point to desc in
 //  the pagemap
-void UpdatePageMap(Descriptor* desc, Descriptor* value)
+// for (unaligned) large allocations, only first page points to desc
+// aligned large allocations get the corresponding page pointing to desc
+void UpdatePageMap(ProcHeap* heap, char* ptr, Descriptor* value)
 {
-    char* superblock = desc->superblock;
-    ASSERT(superblock);
+    ASSERT(ptr);
 
     PageInfo info;
     info.desc = value;
 
     // large allocation, don't need to (un)register every page
     // just first
-    if (!desc->heap)
-        sPageMap.SetPageInfo(superblock, info);
-    else
+    if (!heap)
     {
-        // small allocation, (un)register every page
-        // could *technically* optimize if blockSize >>> page, 
-        //  but let's not worry about that
-        size_t sbSize = desc->heap->sizeclass->sbSize;
-        // sbSize is a multiple of page
-        ASSERT((sbSize & PAGE_MASK) == 0);
-        for (size_t idx = 0; idx < sbSize; idx += PAGE)
-           sPageMap.SetPageInfo(superblock + idx, info); 
+        sPageMap.SetPageInfo(ptr, info);
+        return;
     }
+
+    // only need to worry about alignment for large allocations
+    // ASSERT(ptr == superblock);
+
+    // small allocation, (un)register every page
+    // could *technically* optimize if blockSize >>> page, 
+    //  but let's not worry about that
+    size_t sbSize = heap->sizeclass->sbSize;
+    // sbSize is a multiple of page
+    ASSERT((sbSize & PAGE_MASK) == 0);
+    for (size_t idx = 0; idx < sbSize; idx += PAGE)
+        sPageMap.SetPageInfo(ptr + idx, info); 
 }
 
 void RegisterDesc(Descriptor* desc)
 {
-    UpdatePageMap(desc, desc);
+    ProcHeap* heap = desc->heap;
+    char* ptr = desc->superblock;
+    UpdatePageMap(heap, ptr, desc);
 }
 
 // unregister descriptor before superblock deletion
 // can only be done when superblock is about to be free'd to OS
-void UnregisterDesc(Descriptor* desc)
+void UnregisterDesc(ProcHeap* heap, char* superblock)
 {
-    UpdatePageMap(desc, nullptr);
+    UpdatePageMap(heap, superblock, nullptr);
 }
 
 Descriptor* GetDescriptorForPtr(void* ptr)
@@ -584,11 +591,20 @@ int lf_posix_memalign(void** memptr, size_t alignment, size_t size) noexcept
     if (!ptr)
         return ENOMEM;
 
+    // because of alignment, might need to update pagemap
+    // aligned large allocations need to correctly point to desc
+    //  wherever the block starts (might not be start due to alignment)
+    Descriptor* desc = GetDescriptorForPtr(ptr);
+    ASSERT(desc);
+
     LOG_DEBUG("original ptr: %p", ptr);
     ptr = ALIGN_ADDR(ptr, alignment);
-    // this works fine for a couple reasons
-    // 1) when freeing, we end up following Descriptor* and don't really use ptr
-    // 2) twice the size of (alignment + size) is always enough to align
+
+    // need to update page so that descriptors can be found
+    //  for large allocations aligned to "middle" of superblocks
+    if (UNLIKELY(!desc->heap))
+        UpdatePageMap(nullptr, ptr, desc);
+
     LOG_DEBUG("provided ptr: %p", ptr);
     *memptr = ptr;
     return 0;
@@ -650,9 +666,19 @@ void lf_free(void* ptr) noexcept
     // large allocation case
     if (UNLIKELY(!heap))
     {
-        // free block
+        // unregister descriptor
+        UnregisterDesc(nullptr, superblock);
+        // aligned large allocation case
+        if (UNLIKELY((char*)ptr != superblock))
+            UnregisterDesc(nullptr, (char*)ptr);
+
+        // free superblock
         PageFree(superblock, desc->blockSize);
         RemoveEmptyDesc(heap, desc);
+
+        // desc cannot be in any partial list, so it can be
+        //  immediately reused
+        DescRetire(desc);
         return;
     }
 
@@ -703,7 +729,7 @@ void lf_free(void* ptr) noexcept
         if (newAnchor.state == SB_EMPTY)
         {
             // unregister descriptor
-            UnregisterDesc(desc);
+            UnregisterDesc(heap, superblock);
 
             // free superblock
             PageFree(superblock, heap->sizeclass->sbSize);

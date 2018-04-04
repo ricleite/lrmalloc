@@ -11,7 +11,7 @@
 #define MAX_SZ_IDX 40
 #define LG_MAX_SIZE_IDX 6
 // size of the largest size class
-#define MAX_SZ (2 << 14)
+#define MAX_SZ ((1 << 13) + (1 << 12) + (1 << 11))
 
 // contains size classes
 // computed at compile time
