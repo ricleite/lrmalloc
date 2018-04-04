@@ -153,6 +153,8 @@ void* MallocFromActive(ProcHeap* heap)
     while (!desc->anchor.compare_exchange_weak(
                 oldAnchor, newAnchor));
 
+    // can safely read desc fields after CAS, since desc cannot become empty
+    //  until after this fn returns block
     ASSERT(newAnchor.avail < desc->maxcount || (oldCredits == 0 && oldAnchor.count == 0));
 
     // credits change, update
@@ -300,6 +302,8 @@ void* MallocFromPartial(ProcHeap* heap)
     while (!desc->anchor.compare_exchange_weak(
                 oldAnchor, newAnchor));
 
+    // can safely read desc fields after CAS, since desc cannot become empty
+    //  until after this fn returns block
     ASSERT(newAnchor.avail < desc->maxcount || newAnchor.state == SB_FULL);
 
     // credits change, update
@@ -654,6 +658,10 @@ void lf_free(void* ptr) noexcept
 
     // normal case
     {
+        // after CAS, desc might become empty and
+        //  concurrently reused, so store maxcount
+        uint64_t maxcount = desc->maxcount;
+
         Anchor oldAnchor = desc->anchor.load();
         Anchor newAnchor;
         do
@@ -685,9 +693,11 @@ void lf_free(void* ptr) noexcept
         while (!desc->anchor.compare_exchange_weak(
                     oldAnchor, newAnchor));
 
-        ASSERT(oldAnchor.avail < desc->maxcount || oldAnchor.state == SB_FULL);
-        ASSERT(newAnchor.avail < desc->maxcount);
-        ASSERT(newAnchor.count < desc->maxcount);
+        // after last CAS, can't reliably read any desc fields
+        // as desc might have become empty and been concurrently reused
+        ASSERT(oldAnchor.avail < maxcount || oldAnchor.state == SB_FULL);
+        ASSERT(newAnchor.avail < maxcount);
+        ASSERT(newAnchor.count < maxcount);
 
         // CAS success, can free block
         if (newAnchor.state == SB_EMPTY)
