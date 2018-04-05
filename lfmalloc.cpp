@@ -354,20 +354,23 @@ void* MallocFromNewSB(ProcHeap* heap)
     ASSERT(anchor.avail < desc->maxcount);
     ASSERT(anchor.count < desc->maxcount);
 
+    // register new descriptor
+    // must be done before setting superblock as active
+    RegisterDesc(desc);
+
     // try to update active superblock
     ActiveDescriptor* oldActive = heap->active.load();
     if (oldActive ||
         !heap->active.compare_exchange_strong(
             oldActive, newActive))
     {
-        // there's already an active superblock
+        // CAS fail, there's already an active superblock
+        // unregister descriptor
+        UnregisterDesc(desc->heap, desc->superblock);
         PageFree(desc->superblock, sc->sbSize);
         DescRetire(desc);
         return nullptr;
     }
-
-    // register new descriptor
-    RegisterDesc(desc);
 
     char* ptr = desc->superblock;
     LOG_DEBUG("desc: %p, ptr: %p", desc, ptr);
