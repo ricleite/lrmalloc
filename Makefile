@@ -8,8 +8,7 @@ CFLAGS=-shared -fPIC -std=gnu11 -O2 -Wall $(DFLAGS)
 #  cmpxchg16b (e.g double cas) during execution
 # assuming this support shouldn't be a problem, see:
 # https://superuser.com/questions/187254/how-prevalent-are-old-x64-processors-lacking-the-cmpxchg16b-instruction
-# @todo: -O2
-CXXFLAGS=-shared -fPIC -mcx16 -std=gnu++14 -O0 -Wall $(DFLAGS)
+CXXFLAGS=-shared -fPIC -mcx16 -std=gnu++14 -O2 -Wall $(DFLAGS)
 
 LDFLAGS=-ldl -pthread $(DFLAGS)
 

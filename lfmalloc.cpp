@@ -631,7 +631,10 @@ void* lf_aligned_alloc(size_t alignment, size_t size) noexcept
 {
     LOG_DEBUG();
     void* ptr = nullptr;
-    lf_posix_memalign(&ptr, alignment, size);
+    int ret = lf_posix_memalign(&ptr, alignment, size);
+    if (ret)
+        return nullptr;
+
     return ptr;
 }
 
