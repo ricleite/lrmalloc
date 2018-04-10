@@ -549,8 +549,21 @@ extern "C"
 void* lf_calloc(size_t n, size_t size) noexcept
 {
     LOG_DEBUG();
-    // @todo: check overflow
-    return malloc(n * size);
+    size_t allocSize = n * size;
+    // overflow check
+    // @todo: expensive, need to optimize
+    if (UNLIKELY(n == 0 || allocSize / n != size))
+        return nullptr;
+
+    void* ptr = lf_malloc(allocSize);
+
+    // calloc returns zero-filled memory
+    // @todo: optimize, memory may be already zero-filled 
+    //  if coming directly from OS
+    if (LIKELY(ptr != nullptr))
+        memset(ptr, 0x0, allocSize);
+
+    return ptr;
 }
 
 extern "C"

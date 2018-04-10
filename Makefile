@@ -9,18 +9,16 @@ CFLAGS=-shared -fPIC -std=gnu11 -O2 -Wall $(DFLAGS)
 # assuming this support shouldn't be a problem, see:
 # https://superuser.com/questions/187254/how-prevalent-are-old-x64-processors-lacking-the-cmpxchg16b-instruction
 # @todo: -O2
-CXXFLAGS=-shared -fPIC -mcx16 -std=gnu++14 -O0 -Wall $(DFLAGS) \
-		 -fno-builtin-malloc -fno-builtin-free -fno-builtin-realloc \
-		 -fno-builtin-calloc -fno-builtin-cfree -fno-builtin-memalign \
-		 -fno-builtin-posix_memalign -fno-builtin-valloc -fno-builtin-pvalloc \
-		 -fno-builtin
+CXXFLAGS=-shared -fPIC -mcx16 -std=gnu++14 -O0 -Wall $(DFLAGS)
 
 LDFLAGS=-ldl -pthread $(DFLAGS)
 
+FILES=lfmalloc.cpp size_classes.cpp pages.cpp pagemap.cpp
+
 default: lfmalloc.so lfmalloc.a
 
-lfmalloc.so: lfmalloc.cpp size_classes.cpp pages.cpp pagemap.cpp
-	$(CCX) $(LDFLAGS) $(CXXFLAGS) -o lfmalloc.so lfmalloc.cpp size_classes.cpp pages.cpp pagemap.cpp
+lfmalloc.so: $(FILES)
+	$(CCX) $(LDFLAGS) $(CXXFLAGS) -o lfmalloc.so $(FILES)
 
 lfmalloc.a: lfmalloc.so
 	ar rcs lfmalloc.a lfmalloc.so
