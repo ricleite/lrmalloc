@@ -15,7 +15,6 @@
 #define MAX_SZ (1 << 14)
 
 // contains size classes
-// computed at compile time
 struct SizeClassData
 {
 public:
@@ -24,9 +23,11 @@ public:
     // superblock size
     // always a multiple of page size
     size_t sbSize;
+    // cached number of blocks, equal to sbSize / blockSize
+    size_t blockNum;
 
 public:
-    size_t GetBlockNum() const { return sbSize / blockSize; }
+    size_t GetBlockNum() const { return blockNum; }
 };
 
 // globals

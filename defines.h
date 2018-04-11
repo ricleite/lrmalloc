@@ -34,4 +34,12 @@
 #define LIKELY(x)       __builtin_expect((x), 1)
 #define UNLIKELY(x)     __builtin_expect((x), 0)
 
+#define LFMALLOC_ATTR(s) __attribute__((s))
+#define LFMALLOC_ALLOC_SIZE(s) LFMALLOC_ATTR(alloc_size(s))
+#define LFMALLOC_ALLOC_SIZE2(s1, s2) LFMALLOC_ATTR(alloc_size(s1, s2))
+#define LFMALLOC_EXPORT LFMALLOC_ATTR(visibility("default"))
+#define LFMALLOC_NOTHROW LFMALLOC_ATTR(nothrow)
+
+#define STATIC_ASSERT(x, m) static_assert(x, m)
+
 #endif // __DEFINES_H__

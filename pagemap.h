@@ -6,6 +6,7 @@
 
 #include "defines.h"
 #include "size_classes.h"
+#include "log.h"
 
 // assuming x86-64, for now
 // which uses 48 bits for addressing (e.g high 16 bits ignored)
@@ -27,12 +28,44 @@ struct Descriptor;
 // implemented with a static array, but can also be implemented
 //  with a multi-level radix tree
 
+#define SC_MASK ((1ULL << 6) - 1)
+
 // contains metadata per page
-// *has* to be the size of a single page
+// *has* to be the size of a single word
 struct PageInfo
 {
-    Descriptor* desc;
+private:
+    // descriptor
+    Descriptor* _desc;
+    // size class
+    // stealing bits from desc to store size class
+    // desc is aligned to at least 64 bytes, so 6 bits to steal
+    // which is the same as LG_MAX_SIZE_IDX
+    // size_t scIdx : LG_MAX_SIZE_IDX;
+
+public:
+    void Set(Descriptor* desc, size_t scIdx);
+    Descriptor* GetDesc() const;
+    size_t GetScIdx() const;
 };
+
+inline void PageInfo::Set(Descriptor* desc, size_t scIdx)
+{
+    ASSERT(((size_t)desc & SC_MASK) == 0);
+    ASSERT(scIdx < MAX_SZ_IDX);
+
+    _desc = (Descriptor*)((size_t)desc | scIdx);
+}
+
+inline Descriptor* PageInfo::GetDesc() const
+{
+    return (Descriptor*)((size_t)_desc & ~SC_MASK);
+}
+
+inline size_t PageInfo::GetScIdx() const
+{
+    return ((size_t)_desc & SC_MASK);
+}
 
 #define PM_SZ ((1ULL << PM_SB) * sizeof(PageInfo))
 

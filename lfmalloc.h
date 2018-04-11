@@ -6,14 +6,6 @@
 
 #include "defines.h"
 
-#define LFMALLOC_ATTR(s) __attribute__((s))
-#define LFMALLOC_ALLOC_SIZE(s) LFMALLOC_ATTR(alloc_size(s))
-#define LFMALLOC_ALLOC_SIZE2(s1, s2) LFMALLOC_ATTR(alloc_size(s1, s2))
-#define LFMALLOC_EXPORT LFMALLOC_ATTR(visibility("default"))
-#define LFMALLOC_NOTHROW LFMALLOC_ATTR(nothrow)
-
-#define STATIC_ASSERT(x, m) static_assert(x, m)
-
 #define lf_malloc malloc
 #define lf_free free
 #define lf_calloc calloc
@@ -140,6 +132,7 @@ typedef Descriptor ActiveDescriptor;
 // at least one ProcHeap instance exists for each sizeclass
 struct ProcHeap
 {
+public:
     // active superblock descriptor
     // aligned to 64 bytes, last 6 bits used for credits
     // see ActiveDescriptor
@@ -147,7 +140,12 @@ struct ProcHeap
     // ptr to descriptor, head of partial descriptor list
     std::atomic<DescriptorNode> partialList;
 
-    SizeClassData* sizeclass;
+    size_t scIdx;
+
+public:
+    size_t GetScIdx() const { return scIdx; }
+    SizeClassData* GetSizeClass() const;
+
 } LFMALLOC_ATTR(aligned(CACHELINE));
 
 // size of allocated block when allocating descriptors
@@ -160,15 +158,18 @@ struct ProcHeap
 extern std::atomic<DescriptorNode> AvailDesc;
 
 // helper fns
-void* MallocFromActive(ProcHeap* heap);
+char* MallocFromActive(ProcHeap* heap);
 void UpdateActive(ProcHeap* heap, Descriptor* desc, uint64_t credits);
 void HeapPushPartial(Descriptor* desc);
 Descriptor* HeapPopPartial(ProcHeap* heap);
-void* MallocFromPartial(ProcHeap* heap);
-void* MallocFromNewSB(ProcHeap* heap);
+char* MallocFromPartial(ProcHeap* heap);
+char* MallocFromNewSB(ProcHeap* heap);
 void RemoveEmptyDesc(ProcHeap* heap, Descriptor* desc);
 Descriptor* DescAlloc();
 void DescRetire(Descriptor* desc);
+
+void FillCache(size_t scIdx);
+void FlushCache(size_t scIdx);
 
 ProcHeap* GetProcHeap(size_t size);
 

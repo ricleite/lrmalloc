@@ -10,14 +10,14 @@ CFLAGS=-shared -fPIC -std=gnu11 -O2 -Wall $(DFLAGS)
 # https://superuser.com/questions/187254/how-prevalent-are-old-x64-processors-lacking-the-cmpxchg16b-instruction
 CXXFLAGS=-shared -fPIC -mcx16 -std=gnu++14 -O2 -Wall $(DFLAGS)
 
-LDFLAGS=-ldl -pthread $(DFLAGS)
+LDFLAGS=-ldl -pthread
 
-FILES=lfmalloc.cpp size_classes.cpp pages.cpp pagemap.cpp
+FILES=lfmalloc.cpp size_classes.cpp pages.cpp pagemap.cpp tcache.cpp thread_hooks.cpp
 
 default: lfmalloc.so lfmalloc.a
 
 lfmalloc.so: $(FILES)
-	$(CCX) $(LDFLAGS) $(CXXFLAGS) -o lfmalloc.so $(FILES)
+	$(CCX) $(CXXFLAGS) -o lfmalloc.so $(FILES) $(LDFLAGS)
 
 lfmalloc.a: lfmalloc.so
 	ar rcs lfmalloc.a lfmalloc.so
