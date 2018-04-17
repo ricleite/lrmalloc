@@ -329,6 +329,10 @@ void InitSizeClass()
         while (blockSize >= sbSize)
             sbSize += sc.sbSize;
 
+        // increase superblock size to at least 64kB
+        while (sbSize < (16 * PAGE))
+            sbSize += sc.sbSize;
+
         sc.sbSize = sbSize;
     }
 
@@ -338,6 +342,7 @@ void InitSizeClass()
         SizeClassData& sc = SizeClasses[scIdx];
         sc.blockNum = sc.sbSize / sc.blockSize;
         ASSERT(sc.blockNum > 0);
+        ASSERT(sc.blockNum < MAX_BLOCK_NUM);
     }
 
     // first size class reserved for large allocations

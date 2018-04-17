@@ -4,6 +4,7 @@
 
 #include "defines.h"
 #include "size_classes.h"
+#include "log.h"
 
 struct TCacheBin
 {
@@ -30,8 +31,8 @@ inline void TCacheBin::PushBlock(char* block)
 
 inline char* TCacheBin::PopBlock()
 {
-    if (UNLIKELY(_block == nullptr))
-        return nullptr;
+    // caller must ensure there's an available block
+    ASSERT(_blockNum > 0);
 
     char* ret = _block;
     _block = *(char**)_block;
@@ -39,8 +40,9 @@ inline char* TCacheBin::PopBlock()
     return ret;
 }
 
-// uses tsd/tls
-extern thread_local TCacheBin TCache[MAX_SZ_IDX];
+// use tls init exec model
+extern __thread TCacheBin TCache[MAX_SZ_IDX]
+    LFMALLOC_TLS_INIT_EXEC LFMALLOC_ATTR_CACHE_ALIGNED;
 
 #endif // __TCACHE_H_
 

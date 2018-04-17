@@ -40,6 +40,21 @@
 #define LFMALLOC_EXPORT LFMALLOC_ATTR(visibility("default"))
 #define LFMALLOC_NOTHROW LFMALLOC_ATTR(nothrow)
 
+#if defined(__GNUC__)
+#define LFMALLOC_INLINE LFMALLOC_ATTR(always_inline) inline
+#elif defined(_MSC_VER)
+#define LFMALLOC_INLINE __forceinline inline
+#else
+#define LFMALLOC_INLINE
+#endif
+
+// use initial exec tls model, faster than regular tls
+//  with the downside that the malloc lib can no longer be dlopen'd
+// https://www.ibm.com/support/knowledgecenter/en/SSVUN6_1.1.0/com.ibm.xlcpp11.zlinux.doc/language_ref/attr_tls_model.html 
+#define LFMALLOC_TLS_INIT_EXEC LFMALLOC_ATTR(tls_model("initial-exec"))
+
+#define LFMALLOC_ATTR_CACHE_ALIGNED LFMALLOC_ATTR(aligned(CACHELINE))
+
 #define STATIC_ASSERT(x, m) static_assert(x, m)
 
 #endif // __DEFINES_H__

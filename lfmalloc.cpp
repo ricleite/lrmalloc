@@ -132,10 +132,9 @@ Descriptor* HeapPopPartial(ProcHeap* heap)
     return ListPopPartial(heap);
 }
 
-void MallocFromPartial(size_t scIdx, size_t& blockNum)
+void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum)
 {
     ProcHeap* heap = &Heaps[scIdx];
-    TCacheBin* cache = &TCache[scIdx];
 
     Descriptor* desc = HeapPopPartial(heap);
     if (!desc)
@@ -154,7 +153,7 @@ void MallocFromPartial(size_t scIdx, size_t& blockNum)
         {
             DescRetire(desc);
             // retry
-            return MallocFromPartial(scIdx, blockNum);
+            return MallocFromPartial(scIdx, cache, blockNum);
         }
 
         // oldAnchor must be SB_PARTIAL
@@ -231,10 +230,9 @@ void MallocFromPartial(size_t scIdx, size_t& blockNum)
     blockNum -= blocksTaken;
 }
 
-void MallocFromNewSB(size_t scIdx, size_t& blockNum)
+void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
 {
     ProcHeap* heap = &Heaps[scIdx];
-    TCacheBin* cache = &TCache[scIdx];
     SizeClassData* sc = &SizeClasses[scIdx];
 
     Descriptor* desc = DescAlloc();
@@ -364,7 +362,7 @@ void DescRetire(Descriptor* desc)
     while (!AvailDesc.compare_exchange_weak(oldHead, newHead));
 }
 
-void FillCache(size_t scIdx)
+void FillCache(size_t scIdx, TCacheBin* cache)
 {
     SizeClassData* sc = &SizeClasses[scIdx];
 
@@ -373,24 +371,24 @@ void FillCache(size_t scIdx)
     size_t blockNum = sc->blockNum;
     while (blockNum > 0)
     {
-        MallocFromPartial(scIdx, blockNum);
+        MallocFromPartial(scIdx, cache, blockNum);
         if (blockNum == 0)
             continue;
 
-        MallocFromNewSB(scIdx, blockNum);
+        MallocFromNewSB(scIdx, cache, blockNum);
     }
 }
 
-void FlushCache(size_t scIdx)
+void FlushCache(size_t scIdx, TCacheBin* cache)
 {
-    TCacheBin* cache = &TCache[scIdx];
     ProcHeap* heap = &Heaps[scIdx];
 
     // @todo: optimize
     // in the normal case, we should be able to return several
     //  blocks with a single CAS
-    while (char* ptr = cache->PopBlock())
+    while (cache->GetBlockNum() > 0)
     {
+        char* ptr = cache->PopBlock();
         PageInfo info = GetPageInfoForPtr(ptr);
         Descriptor* desc = info.GetDesc();
         char* superblock = desc->superblock;
@@ -483,7 +481,7 @@ void lf_malloc_thread_finalize()
 {
     // flush caches
     for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx)
-        FlushCache(scIdx);
+        FlushCache(scIdx, &TCache[scIdx]);
 }
 
 extern "C"
@@ -523,7 +521,7 @@ void* lf_malloc(size_t size) noexcept
     TCacheBin* cache = &TCache[scIdx];
     // fill cache if needed
     if (UNLIKELY(cache->GetBlockNum() == 0))
-        FillCache(scIdx);
+        FillCache(scIdx, cache);
 
     return cache->PopBlock();
 }
@@ -703,7 +701,7 @@ void lf_free(void* ptr) noexcept
 
     // flush cache if need
     if (UNLIKELY(cache->GetBlockNum() >= sc->GetBlockNum()))
-        FlushCache(scIdx);
+        FlushCache(scIdx, cache);
 
     cache->PushBlock((char*)ptr);
 }

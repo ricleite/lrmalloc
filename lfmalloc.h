@@ -57,14 +57,12 @@ extern "C"
 // used in Anchor::state
 enum SuperblockState
 {
-    // superblock used in ProcHeap
-    SB_ACTIVE   = 0,
     // all blocks allocated or reserved
-    SB_FULL     = 1,
-    // not ACTIVE but has unreserved available blocks
-    SB_PARTIAL  = 2,
-    // not ACTIVE and all blocks are free
-    SB_EMPTY    = 3,
+    SB_FULL     = 0,
+    // has unreserved available blocks
+    SB_PARTIAL  = 1,
+    // all blocks are free
+    SB_EMPTY    = 2,
 };
 
 struct Anchor;
@@ -72,15 +70,22 @@ struct DescriptorNode;
 struct Descriptor;
 struct ProcHeap;
 struct SizeClassData;
+struct TCacheBin;
+
+#define LG_MAX_BLOCK_NUM    22
+// LG_TAG must be (64 - 2 - LG_MAX_BLOCK_NUM * 2)
+// see struct Anchor
+#define LG_TAG              18
+#define MAX_BLOCK_NUM       (2 << LG_MAX_BLOCK_NUM)
 
 // helper struct to fill descriptor_t::anchor
 // used as atomic_uint64_t
 struct Anchor
 {
     uint64_t state : 2;
-    uint64_t avail : 15;
-    uint64_t count : 15;
-    uint64_t tag : 32;
+    uint64_t avail : LG_MAX_BLOCK_NUM;
+    uint64_t count : LG_MAX_BLOCK_NUM;
+    uint64_t tag : LG_TAG;
 } LFMALLOC_ATTR(packed);
 
 STATIC_ASSERT(sizeof(Anchor) == sizeof(uint64_t), "Invalid anchor size");
@@ -112,7 +117,7 @@ struct Descriptor
     ProcHeap* heap;
     uint64_t blockSize; // block size
     uint64_t maxcount;
-} LFMALLOC_ATTR(aligned(CACHELINE));
+} LFMALLOC_ATTR_CACHE_ALIGNED;
 
 // at least one ProcHeap instance exists for each sizeclass
 struct ProcHeap
@@ -141,14 +146,14 @@ extern std::atomic<DescriptorNode> AvailDesc;
 // helper fns
 void HeapPushPartial(Descriptor* desc);
 Descriptor* HeapPopPartial(ProcHeap* heap);
-void MallocFromPartial(size_t scIdx, size_t& blockNum);
-void MallocFromNewSB(size_t scIdx, size_t& blockNum);
+void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum);
+void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum);
 void RemoveEmptyDesc(ProcHeap* heap, Descriptor* desc);
 Descriptor* DescAlloc();
 void DescRetire(Descriptor* desc);
 
-void FillCache(size_t scIdx);
-void FlushCache(size_t scIdx);
+void FillCache(size_t scIdx, TCacheBin* cache);
+void FlushCache(size_t scIdx, TCacheBin* cache);
 
 #endif // __LFMALLOC_H
 
