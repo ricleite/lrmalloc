@@ -34,6 +34,7 @@ void PageFree(void* ptr, size_t size)
     ASSERT((size & PAGE_MASK) == 0);
 
     int ret = munmap(ptr, size);
+    (void)ret; // suppress warning
     ASSERT(ret == 0);
 }
 

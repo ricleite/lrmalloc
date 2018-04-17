@@ -114,32 +114,13 @@ struct Descriptor
     uint64_t maxcount;
 } LFMALLOC_ATTR(aligned(CACHELINE));
 
-/*
-// can't actually use a bitfield for this, unfortunately
-struct ActiveDescriptor
-{
-    Descriptor* ptr : 58;
-    uint64_t credits : 6;
-};
-*/
-
-typedef Descriptor ActiveDescriptor;
-
-// depends on the number of bits being used in ActiveDescriptor
-#define CREDITS_MAX (1ULL << 6)
-#define CREDITS_MASK ((1ULL << 6) - 1)
-
 // at least one ProcHeap instance exists for each sizeclass
 struct ProcHeap
 {
 public:
-    // active superblock descriptor
-    // aligned to 64 bytes, last 6 bits used for credits
-    // see ActiveDescriptor
-    std::atomic<ActiveDescriptor*> active;
     // ptr to descriptor, head of partial descriptor list
     std::atomic<DescriptorNode> partialList;
-
+    // size class index
     size_t scIdx;
 
 public:
@@ -158,20 +139,16 @@ public:
 extern std::atomic<DescriptorNode> AvailDesc;
 
 // helper fns
-char* MallocFromActive(ProcHeap* heap);
-void UpdateActive(ProcHeap* heap, Descriptor* desc, uint64_t credits);
 void HeapPushPartial(Descriptor* desc);
 Descriptor* HeapPopPartial(ProcHeap* heap);
-char* MallocFromPartial(ProcHeap* heap);
-char* MallocFromNewSB(ProcHeap* heap);
+void MallocFromPartial(size_t scIdx, size_t& blockNum);
+void MallocFromNewSB(size_t scIdx, size_t& blockNum);
 void RemoveEmptyDesc(ProcHeap* heap, Descriptor* desc);
 Descriptor* DescAlloc();
 void DescRetire(Descriptor* desc);
 
 void FillCache(size_t scIdx);
 void FlushCache(size_t scIdx);
-
-ProcHeap* GetProcHeap(size_t size);
 
 #endif // __LFMALLOC_H
 

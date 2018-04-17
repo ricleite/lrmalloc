@@ -22,26 +22,6 @@ bool MallocInit = false;
 // heaps, one heap per size class
 ProcHeap Heaps[MAX_SZ_IDX];
 
-// utilities
-ActiveDescriptor* MakeActive(Descriptor* desc, uint64_t credits)
-{
-    ASSERT(((uint64_t)desc & CREDITS_MASK) == 0);
-    ASSERT(credits < CREDITS_MAX);
-
-    ActiveDescriptor* active = (ActiveDescriptor*)
-        ((uint64_t)desc | credits);
-    return active;
-}
-
-void GetActive(ActiveDescriptor* active, Descriptor** desc, uint64_t* credits)
-{
-    if (desc)
-        *desc = (Descriptor*)((uint64_t)active & ~CREDITS_MASK);
-
-    if (credits)
-        *credits = (uint64_t)active & CREDITS_MASK;
-}
-
 // (un)register descriptor pages with pagemap
 // all pages used by the descriptor will point to desc in
 //  the pagemap
@@ -103,118 +83,6 @@ SizeClassData* ProcHeap::GetSizeClass() const
     return &SizeClasses[scIdx];
 }
 
-char* MallocFromActive(ProcHeap* heap)
-{
-    // reserve block
-    ActiveDescriptor* oldActive = heap->active.load();
-    ActiveDescriptor* newActive;
-    uint64_t oldCredits;
-    do
-    {
-        if (!oldActive)
-            return nullptr;
-
-        Descriptor* oldDesc;
-        GetActive(oldActive, &oldDesc, &oldCredits);
-
-        // if credits > 0, subtract by 1
-        // otherwise set newActive to nullptr
-        newActive = nullptr;
-        if (oldCredits > 0)
-            newActive = MakeActive(oldDesc, oldCredits - 1);
-
-    } while (!heap->active.compare_exchange_weak(
-            oldActive, newActive));
-
-    Descriptor* desc = (Descriptor*)((uint64_t)oldActive & ~CREDITS_MASK);
-
-    LOG_DEBUG("Heap %p, Desc %p", heap, desc);
-
-    // pop block (that we assert exists)
-    // underlying superblock *CANNOT* change after
-    // block reservation, it'll never be empty until we use it
-    char* ptr = nullptr;
-    uint64_t credits = 0;
-
-    // anchor state *CANNOT* be empty
-    // there is at least one reserved block
-    Anchor oldAnchor = desc->anchor.load();
-    Anchor newAnchor;
-    do
-    {
-        ASSERT(oldAnchor.avail < desc->maxcount);
-
-        // compute available block
-        uint64_t blockSize = desc->blockSize;
-        uint64_t avail = oldAnchor.avail;
-        uint64_t offset = avail * blockSize;
-        ptr = (desc->superblock + offset);
-
-        // @todo: synchronize this access
-        uint64_t next = *(uint64_t*)ptr;
-
-        newAnchor = oldAnchor;
-        newAnchor.avail = next;
-        newAnchor.tag++;
-        // last available block
-        if (oldCredits == 0)
-        {
-            // superblock is completely used up
-            if (oldAnchor.count == 0)
-                newAnchor.state = SB_FULL;
-            else
-            {
-                // otherwise, fill up credits
-                credits = std::min<uint64_t>(oldAnchor.count, CREDITS_MAX);
-                newAnchor.count -= credits;
-            }
-        }
-    }
-    while (!desc->anchor.compare_exchange_weak(
-                oldAnchor, newAnchor));
-
-    // can safely read desc fields after CAS, since desc cannot become empty
-    //  until after this fn returns block
-    ASSERT(newAnchor.avail < desc->maxcount || (oldCredits == 0 && oldAnchor.count == 0));
-
-    // credits change, update
-    // while credits == 0, active is nullptr
-    // meaning allocations *CANNOT* come from an active block
-    if (credits > 0)
-        UpdateActive(heap, desc, credits);
-
-    LOG_DEBUG("Heap %p, Desc %p, ptr %p", heap, desc, ptr);
-
-    return ptr;
-}
-
-void UpdateActive(ProcHeap* heap, Descriptor* desc, uint64_t credits)
-{
-    ActiveDescriptor* oldActive = heap->active.load();
-    ActiveDescriptor* newActive = MakeActive(desc, credits - 1);
-
-    if (heap->active.compare_exchange_strong(oldActive, newActive))
-        return; // all good
-
-    // someone installed another active superblock
-    // return credits to superblock, make it SB_PARTIAL
-    // (because the superblock is no longer active but has available blocks)
-    {
-        Anchor oldAnchor = desc->anchor.load();
-        Anchor newAnchor;
-        do
-        {
-            newAnchor = oldAnchor;
-            newAnchor.count += credits;
-            newAnchor.state = SB_PARTIAL;
-        }
-        while (!desc->anchor.compare_exchange_weak(
-            oldAnchor, newAnchor));
-    }
-
-    HeapPushPartial(desc);
-}
-
 Descriptor* ListPopPartial(ProcHeap* heap)
 {
     DescriptorNode oldHead = heap->partialList.load();
@@ -241,6 +109,7 @@ void ListPushPartial(Descriptor* desc)
     DescriptorNode newHead = { desc, oldHead.counter + 1 };
     do
     {
+        ASSERT(oldHead.desc != newHead.desc);
         newHead.desc->nextPartial.store(oldHead); 
     }
     while (!heap->partialList.compare_exchange_weak(
@@ -263,16 +132,19 @@ Descriptor* HeapPopPartial(ProcHeap* heap)
     return ListPopPartial(heap);
 }
 
-char* MallocFromPartial(ProcHeap* heap)
+void MallocFromPartial(size_t scIdx, size_t& blockNum)
 {
+    ProcHeap* heap = &Heaps[scIdx];
+    TCacheBin* cache = &TCache[scIdx];
+
     Descriptor* desc = HeapPopPartial(heap);
     if (!desc)
-        return nullptr;
+        return;
 
-    // reserve block
+    // reserve block(s)
     Anchor oldAnchor = desc->anchor.load();
     Anchor newAnchor;
-    uint64_t credits = 0;
+    uint64_t blocksTaken = 0;
 
     // we have "ownership" of block, but anchor can still change
     // due to free()
@@ -282,7 +154,7 @@ char* MallocFromPartial(ProcHeap* heap)
         {
             DescRetire(desc);
             // retry
-            return MallocFromPartial(heap);
+            return MallocFromPartial(scIdx, blockNum);
         }
 
         // oldAnchor must be SB_PARTIAL
@@ -290,33 +162,49 @@ char* MallocFromPartial(ProcHeap* heap)
         // and it came from HeapPopPartial
         // can't be SB_EMPTY, we already checked
         // obviously can't be SB_ACTIVE
-        credits = std::min<uint64_t>(oldAnchor.count - 1, CREDITS_MAX);
+        ASSERT(oldAnchor.state == SB_PARTIAL);
+
+        blocksTaken = std::min<uint64_t>(oldAnchor.count, blockNum);
         newAnchor = oldAnchor;
-        newAnchor.count -= 1; // block we're allocating right now
-        newAnchor.count -= credits;
-        newAnchor.state = (credits > 0) ?
-            SB_ACTIVE : SB_FULL;
+        newAnchor.count -= blocksTaken;
+        if (newAnchor.count == 0)
+            newAnchor.state = SB_FULL;
     }
     while (!desc->anchor.compare_exchange_weak(
                 oldAnchor, newAnchor));
 
     ASSERT(newAnchor.count < desc->maxcount);
 
-    // pop reserved block
+    // pop reserved block(s)
     // because of free(), may need to retry
-    char* ptr = nullptr;
     oldAnchor = desc->anchor.load();
+
+    char* superblock = desc->superblock;
+    uint64_t maxcount = desc->maxcount;
+    uint64_t blockSize = desc->blockSize;
+
+    // while re-reading anchor, state might change if state = SB_FULL
+    //  a free() will set state = SB_PARTIAL and push to partial list
+    bool addToPartialList = (newAnchor.state == SB_PARTIAL);
 
     do
     {
-        // compute ptr
-        uint64_t idx = oldAnchor.avail;
-        uint64_t blockSize = desc->blockSize;
-        ptr = desc->superblock + idx * blockSize;
+        uint64_t nextAvail = oldAnchor.avail;
+        for (uint64_t i = 0; i < blocksTaken; ++i)
+        {
+            char* block = superblock + nextAvail * blockSize;
+            nextAvail = *(uint64_t*)block;
+            // other threads may have alloc'd block
+            // value in block may not make sense (e.g out of bounds)
+            // in that case, break cycle early, we already know CAS will fail
+            // (and we won't access invalid memory)
+            if (nextAvail >= maxcount)
+                break;
+        }
 
         // update avail
         newAnchor = oldAnchor;
-        newAnchor.avail = *(uint64_t*)ptr;
+        newAnchor.avail = nextAvail;
         newAnchor.tag++;
     }
     while (!desc->anchor.compare_exchange_weak(
@@ -326,16 +214,28 @@ char* MallocFromPartial(ProcHeap* heap)
     //  until after this fn returns block
     ASSERT(newAnchor.avail < desc->maxcount || newAnchor.state == SB_FULL);
 
-    // credits change, update
-    if (credits > 0)
-        UpdateActive(heap, desc, credits);
+    // from oldAnchor we can now push the reserved blocks to cache
+    uint64_t avail = oldAnchor.avail;
+    for (uint64_t i = 0; i < blocksTaken; ++i)
+    {
+        ASSERT(avail < desc->maxcount);
+        char* block = superblock + avail * blockSize;
+        avail = *(uint64_t*)block;
+        cache->PushBlock(block);
+    }
 
-    return ptr;
+    if (addToPartialList)
+        HeapPushPartial(desc);
+
+    ASSERT(blockNum >= blocksTaken);
+    blockNum -= blocksTaken;
 }
 
-char* MallocFromNewSB(ProcHeap* heap)
+void MallocFromNewSB(size_t scIdx, size_t& blockNum)
 {
-    SizeClassData* sc = heap->GetSizeClass();
+    ProcHeap* heap = &Heaps[scIdx];
+    TCacheBin* cache = &TCache[scIdx];
+    SizeClassData* sc = &SizeClasses[scIdx];
 
     Descriptor* desc = DescAlloc();
     ASSERT(desc);
@@ -343,51 +243,45 @@ char* MallocFromNewSB(ProcHeap* heap)
     desc->heap = heap;
     desc->blockSize = sc->blockSize;
     desc->maxcount = sc->GetBlockNum();
-    // allocate superblock, organize blocks in a linked list
-    {
-        desc->superblock = (char*)PageAlloc(sc->sbSize);
+    desc->superblock = (char*)PageAlloc(sc->sbSize);
 
-        // ignore "block 0", that's given to the caller
-        uint64_t const blockSize = sc->blockSize;
-        for (uint64_t idx = 1; idx < desc->maxcount - 1; ++idx)
-            *(uint64_t*)(desc->superblock + idx * blockSize) = (idx + 1);
+    uint64_t blocksTaken = std::min<uint64_t>(desc->maxcount, blockNum);
+
+    // push blocks to cache
+    uint64_t const blockSize = sc->blockSize;
+    for (uint64_t idx = 0; idx < blocksTaken; ++idx)
+    {
+        char* block = desc->superblock + idx * blockSize;
+        cache->PushBlock(block);
     }
 
-    uint64_t credits = std::min<uint64_t>(desc->maxcount - 1, CREDITS_MAX);
-    ActiveDescriptor* newActive = MakeActive(desc, credits - 1);
+    // allocate superblock, organize blocks in a linked list
+    // this is left for last so we don't do needless work to blocks
+    //  that end up in the cache
+    for (uint64_t idx = blocksTaken; idx < desc->maxcount - 1; ++idx)
+        *(uint64_t*)(desc->superblock + idx * blockSize) = (idx + 1);
 
     Anchor anchor;
-    anchor.avail = 1;
-    anchor.count = (desc->maxcount - 1) - credits;
-    anchor.state = SB_ACTIVE;
+    anchor.avail = blocksTaken;
+    anchor.count = desc->maxcount - blocksTaken;
+    anchor.state = (anchor.count > 0) ? SB_PARTIAL : SB_FULL;
     anchor.tag = 0;
 
     desc->anchor.store(anchor);
 
-    ASSERT(anchor.avail < desc->maxcount);
+    ASSERT(anchor.avail < desc->maxcount || anchor.state == SB_FULL);
     ASSERT(anchor.count < desc->maxcount);
 
     // register new descriptor
     // must be done before setting superblock as active
+    // or leaving superblock as available in a partial list
     RegisterDesc(desc);
 
-    // try to update active superblock
-    ActiveDescriptor* oldActive = heap->active.load();
-    if (oldActive ||
-        !heap->active.compare_exchange_strong(
-            oldActive, newActive))
-    {
-        // CAS fail, there's already an active superblock
-        // unregister descriptor
-        UnregisterDesc(desc->heap, desc->superblock);
-        PageFree(desc->superblock, sc->sbSize);
-        DescRetire(desc);
-        return nullptr;
-    }
+    if (anchor.state == SB_PARTIAL)
+        HeapPushPartial(desc);
 
-    char* ptr = desc->superblock;
-    LOG_DEBUG("desc: %p, ptr: %p", desc, ptr);
-    return ptr;
+    ASSERT(blockNum >= blocksTaken);
+    blockNum -= blocksTaken;
 }
 
 void RemoveEmptyDesc(ProcHeap* heap, Descriptor* desc)
@@ -405,7 +299,10 @@ Descriptor* DescAlloc()
             DescriptorNode newHead = oldHead.desc->nextFree.load();
             newHead.counter = oldHead.counter;
             if (AvailDesc.compare_exchange_weak(oldHead, newHead))
+            {
+                ASSERT(oldHead.desc->blockSize == 0);
                 return oldHead.desc;
+            }
         }
         else
         {
@@ -455,6 +352,7 @@ Descriptor* DescAlloc()
 
 void DescRetire(Descriptor* desc)
 {
+    desc->blockSize = 0;
     DescriptorNode oldHead = AvailDesc.load();
     DescriptorNode newHead;
     do
@@ -468,35 +366,18 @@ void DescRetire(Descriptor* desc)
 
 void FillCache(size_t scIdx)
 {
-    TCacheBin* cache = &TCache[scIdx];
     SizeClassData* sc = &SizeClasses[scIdx];
-    ProcHeap* heap = &Heaps[scIdx];
 
     // number of blocks to fill the cache with
     // using the same number of blocks as a superblock can have
-    size_t blocks = sc->blockNum;
-    while (blocks > cache->GetBlockNum())
+    size_t blockNum = sc->blockNum;
+    while (blockNum > 0)
     {
-        if (char* ptr = MallocFromActive(heap))
-        {
-            LOG_DEBUG("MallocFromActive, ptr: %p", ptr);
-            cache->PushBlock(ptr);
+        MallocFromPartial(scIdx, blockNum);
+        if (blockNum == 0)
             continue;
-        }
 
-        if (char* ptr = MallocFromPartial(heap))
-        {
-            LOG_DEBUG("MallocFromPartial, ptr: %p", ptr);
-            cache->PushBlock(ptr);
-            continue;
-        }
-
-        if (char* ptr = MallocFromNewSB(heap))
-        {
-            LOG_DEBUG("MallocFromNewSB, ptr: %p", ptr);
-            cache->PushBlock(ptr);
-            continue;
-        }
+        MallocFromNewSB(scIdx, blockNum);
     }
 }
 
@@ -518,6 +399,7 @@ void FlushCache(size_t scIdx)
         // after CAS, desc might become empty and
         //  concurrently reused, so store maxcount
         uint64_t maxcount = desc->maxcount;
+        (void)maxcount; // suppress unused warning
 
         Anchor oldAnchor = desc->anchor.load();
         Anchor newAnchor;
@@ -534,6 +416,7 @@ void FlushCache(size_t scIdx)
                 newAnchor.state = SB_PARTIAL;
             // this can't happen with SB_ACTIVE
             // because of reserved blocks
+            ASSERT(oldAnchor.count < desc->maxcount);
             if (oldAnchor.count == desc->maxcount - 1)
                 newAnchor.state = SB_EMPTY; // can free superblock
             else
@@ -577,23 +460,9 @@ void InitMalloc()
     for (size_t idx = 0; idx < MAX_SZ_IDX; ++idx)
     {
         ProcHeap& heap = Heaps[idx];
-        heap.active.store(nullptr);
         heap.partialList.store({nullptr, 0});
         heap.scIdx = idx;
     }
-}
-
-ProcHeap* GetProcHeap(size_t size)
-{
-    // compute size class
-    if (UNLIKELY(!MallocInit))
-        InitMalloc();
-
-    size_t scIdx = GetSizeClass(size);
-    if (LIKELY(scIdx))
-        return &Heaps[scIdx];
-
-    return nullptr;
 }
 
 size_t GetOrInitSizeClass(size_t size)
@@ -651,8 +520,8 @@ void* lf_malloc(size_t size) noexcept
         return (void*)ptr;
     }
 
-    // try cache
     TCacheBin* cache = &TCache[scIdx];
+    // fill cache if needed
     if (UNLIKELY(cache->GetBlockNum() == 0))
         FillCache(scIdx);
 
@@ -829,11 +698,10 @@ void lf_free(void* ptr) noexcept
     // recompute
     ptr = (char*)(superblock + idx * blockSize);
 
-    // try to fill cache
     TCacheBin* cache = &TCache[scIdx];
     SizeClassData* sc = &SizeClasses[scIdx];
 
-
+    // flush cache if need
     if (UNLIKELY(cache->GetBlockNum() >= sc->GetBlockNum()))
         FlushCache(scIdx);
 
