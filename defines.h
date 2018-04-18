@@ -41,9 +41,9 @@
 #define LFMALLOC_NOTHROW LFMALLOC_ATTR(nothrow)
 
 #if defined(__GNUC__)
-#define LFMALLOC_INLINE LFMALLOC_ATTR(always_inline) inline
+#define LFMALLOC_INLINE LFMALLOC_ATTR(always_inline) inline static
 #elif defined(_MSC_VER)
-#define LFMALLOC_INLINE __forceinline inline
+#define LFMALLOC_INLINE __forceinline inline static
 #else
 #define LFMALLOC_INLINE
 #endif

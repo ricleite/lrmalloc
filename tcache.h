@@ -16,6 +16,7 @@ public:
     // common, fast ops
     void PushBlock(char* block);
     char* PopBlock(); // can return nullptr
+    char* PeekBlock() const { return _block; }
     size_t GetBlockNum() const { return _blockNum; }
 
     // slow operations like fill/flush handled in cache user

@@ -73,9 +73,41 @@ void UnregisterDesc(ProcHeap* heap, char* superblock)
     UpdatePageMap(heap, superblock, nullptr, 0L);
 }
 
+LFMALLOC_INLINE
 PageInfo GetPageInfoForPtr(void* ptr)
 {
     return sPageMap.GetPageInfo((char*)ptr);
+}
+
+// compute block index in superblock
+LFMALLOC_INLINE
+uint64_t ComputeIdx(char* superblock, char* block, size_t scIdx)
+{
+    // optimize integer division by allowing the compiler to create 
+    //  a jump table using size class index
+    // compiler can then optimize integer div due to known divisor
+    uint64_t diff = size_t(block - superblock);
+    uint64_t scBlockSize = SizeClasses[scIdx].blockSize;
+    (void)scBlockSize; // suppress unused var warning
+    uint64_t idx = 0;
+    switch (scIdx)
+    {
+#define SIZE_CLASS_bin_yes(index, blockSize)  \
+        case index:                           \
+            ASSERT(scBlockSize == blockSize); \
+            idx = diff / blockSize;           \
+            break;
+#define SIZE_CLASS_bin_no(index, blockSize)
+#define SC(index, lg_grp, lg_delta, ndelta, psz, bin, pgs, lg_delta_lookup) \
+        SIZE_CLASS_bin_##bin((index + 1), ((1U << lg_grp) + (ndelta << lg_delta)))
+        SIZE_CLASSES
+        default:
+            ASSERT(false);
+            break;
+    }
+
+    ASSERT(diff / scBlockSize == idx);
+    return idx;
 }
 
 SizeClassData* ProcHeap::GetSizeClass() const
@@ -382,29 +414,52 @@ void FillCache(size_t scIdx, TCacheBin* cache)
 void FlushCache(size_t scIdx, TCacheBin* cache)
 {
     ProcHeap* heap = &Heaps[scIdx];
+    SizeClassData* sc = &SizeClasses[scIdx];
+    uint64_t sbSize = sc->sbSize;
+    // after CAS, desc might become empty and
+    //  concurrently reused, so store maxcount
+    uint64_t maxcount = sc->GetBlockNum();
+    (void)maxcount; // suppress unused warning
 
     // @todo: optimize
     // in the normal case, we should be able to return several
     //  blocks with a single CAS
     while (cache->GetBlockNum() > 0)
     {
-        char* ptr = cache->PopBlock();
-        PageInfo info = GetPageInfoForPtr(ptr);
+        char* tail = cache->PopBlock();
+        char* head = tail;
+        PageInfo info = GetPageInfoForPtr(tail);
         Descriptor* desc = info.GetDesc();
         char* superblock = desc->superblock;
-        uint64_t blockSize = desc->blockSize;
-        uint64_t idx = (ptr - superblock) / blockSize;
-        // after CAS, desc might become empty and
-        //  concurrently reused, so store maxcount
-        uint64_t maxcount = desc->maxcount;
-        (void)maxcount; // suppress unused warning
+
+        uint64_t blockCount = 1;
+        // check if next cache blocks are in the same superblock
+        // same superblock, same descriptor
+        while (cache->GetBlockNum() > 0)
+        {
+            char* ptr = cache->PeekBlock();
+            if (ptr < superblock || ptr >= superblock + sbSize)
+                break; // ptr not in superblock
+
+            // remove block from cache
+            cache->PopBlock();
+
+            // ptr in superblock, add to "list"
+            ++blockCount;
+            uint64_t idx = ComputeIdx(superblock, head, scIdx);
+            *(uint64_t*)ptr = idx;
+            head = ptr;
+        }
+
+        // add list to desc, update anchor
+        uint64_t idx = ComputeIdx(superblock, head, scIdx);
 
         Anchor oldAnchor = desc->anchor.load();
         Anchor newAnchor;
         do
         {
             // update anchor.avail
-            *(uint64_t*)ptr = oldAnchor.avail;
+            *(uint64_t*)tail = oldAnchor.avail;
 
             newAnchor = oldAnchor;
             newAnchor.avail = idx;
@@ -415,10 +470,13 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
             // this can't happen with SB_ACTIVE
             // because of reserved blocks
             ASSERT(oldAnchor.count < desc->maxcount);
-            if (oldAnchor.count == desc->maxcount - 1)
+            if (oldAnchor.count + blockCount == desc->maxcount)
+            {
+                newAnchor.count = desc->maxcount - 1;
                 newAnchor.state = SB_EMPTY; // can free superblock
+            }
             else
-                ++newAnchor.count;
+                newAnchor.count += blockCount;
         }
         while (!desc->anchor.compare_exchange_weak(
                     oldAnchor, newAnchor));
@@ -463,6 +521,7 @@ void InitMalloc()
     }
 }
 
+LFMALLOC_INLINE
 size_t GetOrInitSizeClass(size_t size)
 {
     if (UNLIKELY(!MallocInit))
@@ -689,10 +748,9 @@ void lf_free(void* ptr) noexcept
     }
 
     // ptr may be aligned, need to recompute to be sure
-    // @todo: optimize, integer div is expensive
     char* superblock = desc->superblock;
     uint64_t blockSize = desc->blockSize;
-    uint64_t idx = ((char*)ptr - superblock) / blockSize;
+    uint64_t idx = ComputeIdx(superblock, (char*)ptr, scIdx);
     // recompute
     ptr = (char*)(superblock + idx * blockSize);
 
