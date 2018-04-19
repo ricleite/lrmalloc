@@ -105,6 +105,9 @@ uint64_t ComputeIdx(char* superblock, char* block, size_t scIdx)
             ASSERT(false);
             break;
     }
+#undef SIZE_CLASS_bin_yes
+#undef SIZE_CLASS_bin_no
+#undef SC
 
     ASSERT(diff / scBlockSize == idx);
     return idx;
@@ -512,6 +515,9 @@ void InitMalloc()
     // init size classes
     InitSizeClass();
 
+    // init page map
+    sPageMap.Init();
+
     // init heaps
     for (size_t idx = 0; idx < MAX_SZ_IDX; ++idx)
     {
@@ -714,13 +720,9 @@ void lf_free(void* ptr) noexcept
 
     PageInfo info = GetPageInfoForPtr(ptr);
     Descriptor* desc = info.GetDesc();
-    if (UNLIKELY(!desc))
-    {
-        // @todo: this can happen with dynamic loading
-        // need to print correct message
-        ASSERT(desc);
-        return;
-    }
+    // @todo: this can happen with dynamic loading
+    // need to print correct message
+    ASSERT(desc);
 
     size_t scIdx = info.GetScIdx();
     

@@ -7,9 +7,6 @@ PageMap sPageMap;
 
 void PageMap::Init()
 {
-    ASSERT(!_init);
-    _init = true;
-
     // pages will necessarily be given by the OS
     // so they're already initialized and zero'd
     // PM_SZ is necessarily aligned to page size

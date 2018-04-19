@@ -72,19 +72,19 @@ inline size_t PageInfo::GetScIdx() const
 static_assert(sizeof(PageInfo) == sizeof(uint64_t), "Invalid PageInfo size");
 
 // lock free page map
-// lazy-initialized on first call
 class PageMap
 {
 public:
+    // must be called before any GetPageInfo/SetPageInfo calls
+    void Init();
+
     PageInfo GetPageInfo(char* ptr);
     void SetPageInfo(char* ptr, PageInfo info);
 
 private:
-    void Init();
     size_t AddrToKey(char* ptr) const;
 
 private:
-    bool _init = false;
     // array based impl
     std::atomic<PageInfo>* _pagemap = { nullptr };
 };
@@ -97,18 +97,12 @@ inline size_t PageMap::AddrToKey(char* ptr) const
 
 inline PageInfo PageMap::GetPageInfo(char* ptr)
 {
-    if (UNLIKELY(!_init))
-        Init();
-
     size_t key = AddrToKey(ptr);
     return _pagemap[key].load();
 }
 
 inline void PageMap::SetPageInfo(char* ptr, PageInfo info)
 {
-    if (UNLIKELY(!_init))
-        Init();
-
     size_t key = AddrToKey(ptr);
     _pagemap[key].store(info);
 }

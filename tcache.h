@@ -10,14 +10,14 @@ struct TCacheBin
 {
 private:
     char* _block = nullptr;
-    size_t _blockNum = 0;
+    uint32_t _blockNum = 0;
 
 public:
     // common, fast ops
     void PushBlock(char* block);
     char* PopBlock(); // can return nullptr
     char* PeekBlock() const { return _block; }
-    size_t GetBlockNum() const { return _blockNum; }
+    uint32_t GetBlockNum() const { return _blockNum; }
 
     // slow operations like fill/flush handled in cache user
 };
@@ -27,7 +27,7 @@ inline void TCacheBin::PushBlock(char* block)
     // block has at least sizeof(char*)
     *(char**)block = _block;
     _block = block;
-    ++_blockNum;
+    _blockNum++;
 }
 
 inline char* TCacheBin::PopBlock()
@@ -37,7 +37,7 @@ inline char* TCacheBin::PopBlock()
 
     char* ret = _block;
     _block = *(char**)_block;
-    --_blockNum;
+    _blockNum--;
     return ret;
 }
 
