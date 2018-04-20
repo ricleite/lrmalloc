@@ -148,7 +148,6 @@ void HeapPushPartial(Descriptor* desc);
 Descriptor* HeapPopPartial(ProcHeap* heap);
 void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum);
 void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum);
-void RemoveEmptyDesc(ProcHeap* heap, Descriptor* desc);
 Descriptor* DescAlloc();
 void DescRetire(Descriptor* desc);
 

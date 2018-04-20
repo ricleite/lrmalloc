@@ -178,7 +178,9 @@ void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     // reserve block(s)
     Anchor oldAnchor = desc->anchor.load();
     Anchor newAnchor;
-    uint64_t blocksTaken = 0;
+    uint64_t maxcount = desc->maxcount;
+    uint64_t blockSize = desc->blockSize;
+    char* superblock = desc->superblock;
 
     // we have "ownership" of block, but anchor can still change
     // due to free()
@@ -198,71 +200,32 @@ void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum)
         // obviously can't be SB_ACTIVE
         ASSERT(oldAnchor.state == SB_PARTIAL);
 
-        blocksTaken = std::min<uint64_t>(oldAnchor.count, blockNum);
         newAnchor = oldAnchor;
-        newAnchor.count -= blocksTaken;
-        if (newAnchor.count == 0)
-            newAnchor.state = SB_FULL;
+        newAnchor.count = 0;
+        // avail value doesn't actually matter
+        newAnchor.avail = maxcount;
+        newAnchor.state = SB_FULL;
     }
     while (!desc->anchor.compare_exchange_weak(
                 oldAnchor, newAnchor));
 
-    ASSERT(newAnchor.count < desc->maxcount);
-
-    // pop reserved block(s)
-    // because of free(), may need to retry
-    oldAnchor = desc->anchor.load();
-
-    char* superblock = desc->superblock;
-    uint64_t maxcount = desc->maxcount;
-    uint64_t blockSize = desc->blockSize;
-
-    // while re-reading anchor, state might change if state = SB_FULL
-    //  a free() will set state = SB_PARTIAL and push to partial list
-    bool addToPartialList = (newAnchor.state == SB_PARTIAL);
-
-    do
-    {
-        uint64_t nextAvail = oldAnchor.avail;
-        for (uint64_t i = 0; i < blocksTaken; ++i)
-        {
-            char* block = superblock + nextAvail * blockSize;
-            nextAvail = *(uint64_t*)block;
-            // other threads may have alloc'd block
-            // value in block may not make sense (e.g out of bounds)
-            // in that case, break cycle early, we already know CAS will fail
-            // (and we won't access invalid memory)
-            if (nextAvail >= maxcount)
-                break;
-        }
-
-        // update avail
-        newAnchor = oldAnchor;
-        newAnchor.avail = nextAvail;
-        newAnchor.tag++;
-    }
-    while (!desc->anchor.compare_exchange_weak(
-                oldAnchor, newAnchor));
-
-    // can safely read desc fields after CAS, since desc cannot become empty
-    //  until after this fn returns block
-    ASSERT(newAnchor.avail < desc->maxcount || newAnchor.state == SB_FULL);
-
-    // from oldAnchor we can now push the reserved blocks to cache
+    // will take as many blocks as available from superblock
+    // *AND* no thread can do malloc() using this superblock, we
+    //  exclusively own it
+    // if CAS fails, it just means another thread added more available blocks
+    //  through FlushCache, which we can then use
+    uint64_t blocksTaken = oldAnchor.count;
     uint64_t avail = oldAnchor.avail;
     for (uint64_t i = 0; i < blocksTaken; ++i)
     {
-        ASSERT(avail < desc->maxcount);
+        ASSERT(avail < maxcount);
         char* block = superblock + avail * blockSize;
         avail = *(uint64_t*)block;
+
         cache->PushBlock(block);
     }
 
-    if (addToPartialList)
-        HeapPushPartial(desc);
-
-    ASSERT(blockNum >= blocksTaken);
-    blockNum -= blocksTaken;
+    blockNum += blocksTaken;
 }
 
 void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
@@ -273,37 +236,31 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     Descriptor* desc = DescAlloc();
     ASSERT(desc);
 
+    uint64_t const blockSize = sc->blockSize;
+    uint64_t const maxcount = sc->GetBlockNum();
+
     desc->heap = heap;
-    desc->blockSize = sc->blockSize;
-    desc->maxcount = sc->GetBlockNum();
+    desc->blockSize = blockSize;
+    desc->maxcount = maxcount;
     desc->superblock = (char*)PageAlloc(sc->sbSize);
 
-    uint64_t blocksTaken = std::min<uint64_t>(desc->maxcount, blockNum);
-
     // push blocks to cache
-    uint64_t const blockSize = sc->blockSize;
-    for (uint64_t idx = 0; idx < blocksTaken; ++idx)
+    for (uint64_t idx = 0; idx < maxcount; ++idx)
     {
         char* block = desc->superblock + idx * blockSize;
         cache->PushBlock(block);
     }
 
-    // allocate superblock, organize blocks in a linked list
-    // this is left for last so we don't do needless work to blocks
-    //  that end up in the cache
-    for (uint64_t idx = blocksTaken; idx < desc->maxcount - 1; ++idx)
-        *(uint64_t*)(desc->superblock + idx * blockSize) = (idx + 1);
-
     Anchor anchor;
-    anchor.avail = blocksTaken;
-    anchor.count = desc->maxcount - blocksTaken;
-    anchor.state = (anchor.count > 0) ? SB_PARTIAL : SB_FULL;
+    anchor.avail = maxcount;
+    anchor.count = 0;
+    anchor.state = SB_FULL;
     anchor.tag = 0;
 
     desc->anchor.store(anchor);
 
-    ASSERT(anchor.avail < desc->maxcount || anchor.state == SB_FULL);
-    ASSERT(anchor.count < desc->maxcount);
+    ASSERT(anchor.avail < maxcount || anchor.state == SB_FULL);
+    ASSERT(anchor.count < maxcount);
 
     // register new descriptor
     // must be done before setting superblock as active
@@ -313,13 +270,7 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     if (anchor.state == SB_PARTIAL)
         HeapPushPartial(desc);
 
-    ASSERT(blockNum >= blocksTaken);
-    blockNum -= blocksTaken;
-}
-
-void RemoveEmptyDesc(ProcHeap* heap, Descriptor* desc)
-{
-    ListRemoveEmptyDesc(heap, desc);
+    blockNum += maxcount;
 }
 
 Descriptor* DescAlloc()
@@ -399,19 +350,18 @@ void DescRetire(Descriptor* desc)
 
 void FillCache(size_t scIdx, TCacheBin* cache)
 {
-    SizeClassData* sc = &SizeClasses[scIdx];
-
-    // number of blocks to fill the cache with
-    // using the same number of blocks as a superblock can have
-    size_t blockNum = sc->blockNum;
-    while (blockNum > 0)
-    {
-        MallocFromPartial(scIdx, cache, blockNum);
-        if (blockNum == 0)
-            continue;
-
+    // at most cache will be filled with number of blocks equal to superblock
+    size_t blockNum = 0;
+    // use a *SINGLE* partial superblock to try to fill cache
+    MallocFromPartial(scIdx, cache, blockNum);
+    // if we obtain no blocks from partial superblocks, create a new superblock
+    if (blockNum == 0)
         MallocFromNewSB(scIdx, cache, blockNum);
-    }
+
+    SizeClassData* sc = &SizeClasses[scIdx];
+    (void)sc;
+    ASSERT(blockNum > 0);
+    ASSERT(blockNum <= sc->blockNum);
 }
 
 void FlushCache(size_t scIdx, TCacheBin* cache)
@@ -498,7 +448,6 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
 
             // free superblock
             PageFree(superblock, heap->GetSizeClass()->sbSize);
-            RemoveEmptyDesc(heap, desc);
         }
         else if (oldAnchor.state == SB_FULL)
             HeapPushPartial(desc);
@@ -741,7 +690,6 @@ void lf_free(void* ptr) noexcept
 
         // free superblock
         PageFree(superblock, desc->blockSize);
-        RemoveEmptyDesc(nullptr, desc);
 
         // desc cannot be in any partial list, so it can be
         //  immediately reused
