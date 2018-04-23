@@ -19,12 +19,12 @@ struct SizeClassData
 {
 public:
     // size of block
-    size_t blockSize;
+    uint32_t blockSize;
     // superblock size
     // always a multiple of page size
-    size_t sbSize;
+    uint32_t sbSize;
     // cached number of blocks, equal to sbSize / blockSize
-    size_t blockNum;
+    uint32_t blockNum;
 
 public:
     size_t GetBlockNum() const { return blockNum; }

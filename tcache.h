@@ -15,6 +15,8 @@ private:
 public:
     // common, fast ops
     void PushBlock(char* block);
+    // push block list, cache *must* be empty
+    void PushList(char* block, uint32_t length);
     char* PopBlock(); // can return nullptr
     char* PeekBlock() const { return _block; }
     uint32_t GetBlockNum() const { return _blockNum; }
@@ -28,6 +30,16 @@ inline void TCacheBin::PushBlock(char* block)
     *(char**)block = _block;
     _block = block;
     _blockNum++;
+}
+
+inline void TCacheBin::PushList(char* block, uint32_t length)
+{
+    // caller must ensure there's no available block
+    // this op is only used to fill empty cache
+    ASSERT(_blockNum == 0);
+
+    _block = block;
+    _blockNum = length;
 }
 
 inline char* TCacheBin::PopBlock()

@@ -81,15 +81,19 @@ PageInfo GetPageInfoForPtr(void* ptr)
 
 // compute block index in superblock
 LFMALLOC_INLINE
-uint64_t ComputeIdx(char* superblock, char* block, size_t scIdx)
+uint32_t ComputeIdx(char* superblock, char* block, size_t scIdx)
 {
+    SizeClassData* sc = &SizeClasses[scIdx];
+    uint32_t scBlockSize = sc->blockSize;
+    (void)scBlockSize; // suppress unused var warning
+
+    ASSERT(block >= superblock);
+    ASSERT(block < superblock + sc->sbSize);
     // optimize integer division by allowing the compiler to create 
     //  a jump table using size class index
     // compiler can then optimize integer div due to known divisor
-    uint64_t diff = size_t(block - superblock);
-    uint64_t scBlockSize = SizeClasses[scIdx].blockSize;
-    (void)scBlockSize; // suppress unused var warning
-    uint64_t idx = 0;
+    uint32_t diff = uint32_t(block - superblock);
+    uint32_t idx = 0;
     switch (scIdx)
     {
 #define SIZE_CLASS_bin_yes(index, blockSize)  \
@@ -176,8 +180,8 @@ void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     // reserve block(s)
     Anchor oldAnchor = desc->anchor.load();
     Anchor newAnchor;
-    uint64_t maxcount = desc->maxcount;
-    uint64_t blockSize = desc->blockSize;
+    uint32_t maxcount = desc->maxcount;
+    uint32_t blockSize = desc->blockSize;
     char* superblock = desc->superblock;
 
     // we have "ownership" of block, but anchor can still change
@@ -212,16 +216,17 @@ void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     //  exclusively own it
     // if CAS fails, it just means another thread added more available blocks
     //  through FlushCache, which we can then use
-    uint64_t blocksTaken = oldAnchor.count;
-    uint64_t avail = oldAnchor.avail;
-    for (uint64_t i = 0; i < blocksTaken; ++i)
-    {
-        ASSERT(avail < maxcount);
-        char* block = superblock + avail * blockSize;
-        avail = *(uint64_t*)block;
+    uint32_t blocksTaken = oldAnchor.count;
+    uint32_t avail = oldAnchor.avail;
 
-        cache->PushBlock(block);
-    }
+    ASSERT(avail < maxcount);
+    char* block = superblock + avail * blockSize;
+
+    // cache must be empty at this point
+    // and the blocks are already organized as a list
+    // so all we need do is "push" that list, a constant time op
+    ASSERT(cache->GetBlockNum() == 0);
+    cache->PushList(block, blocksTaken);
 
     blockNum += blocksTaken;
 }
@@ -234,20 +239,26 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     Descriptor* desc = DescAlloc();
     ASSERT(desc);
 
-    uint64_t const blockSize = sc->blockSize;
-    uint64_t const maxcount = sc->GetBlockNum();
+    uint32_t const blockSize = sc->blockSize;
+    uint32_t const maxcount = sc->GetBlockNum();
 
     desc->heap = heap;
     desc->blockSize = blockSize;
     desc->maxcount = maxcount;
     desc->superblock = (char*)PageAlloc(sc->sbSize);
 
-    // push blocks to cache
-    for (uint64_t idx = 0; idx < maxcount; ++idx)
+    // prepare block list
+    char* superblock = desc->superblock;
+    for (uint32_t idx = 0; idx < maxcount - 1; ++idx)
     {
-        char* block = desc->superblock + idx * blockSize;
-        cache->PushBlock(block);
+        char* block = superblock + idx * blockSize;
+        char* next = superblock + (idx + 1) * blockSize;
+        *(char**)block = next;
     }
+
+    // push blocks to cache
+    char* block = superblock; // first block
+    cache->PushList(block, maxcount);
 
     Anchor anchor;
     anchor.avail = maxcount;
@@ -366,10 +377,11 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
 {
     ProcHeap* heap = &Heaps[scIdx];
     SizeClassData* sc = &SizeClasses[scIdx];
-    uint64_t sbSize = sc->sbSize;
+    uint32_t const sbSize = sc->sbSize;
+    uint32_t const blockSize = sc->blockSize;
     // after CAS, desc might become empty and
     //  concurrently reused, so store maxcount
-    uint64_t maxcount = sc->GetBlockNum();
+    uint32_t const maxcount = sc->GetBlockNum();
     (void)maxcount; // suppress unused warning
 
     // @todo: optimize
@@ -383,7 +395,7 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
         Descriptor* desc = info.GetDesc();
         char* superblock = desc->superblock;
 
-        uint64_t blockCount = 1;
+        uint32_t blockCount = 1;
         // check if next cache blocks are in the same superblock
         // same superblock, same descriptor
         while (cache->GetBlockNum() > 0)
@@ -397,20 +409,20 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
 
             // ptr in superblock, add to "list"
             ++blockCount;
-            uint64_t idx = ComputeIdx(superblock, head, scIdx);
-            *(uint64_t*)ptr = idx;
+            *(char**)ptr = head;
             head = ptr;
         }
 
         // add list to desc, update anchor
-        uint64_t idx = ComputeIdx(superblock, head, scIdx);
+        uint32_t idx = ComputeIdx(superblock, head, scIdx);
 
         Anchor oldAnchor = desc->anchor.load();
         Anchor newAnchor;
         do
         {
             // update anchor.avail
-            *(uint64_t*)tail = oldAnchor.avail;
+            char* next = (char*)(superblock + oldAnchor.avail * blockSize);
+            *(char**)tail = next;
 
             newAnchor = oldAnchor;
             newAnchor.avail = idx;
@@ -570,7 +582,7 @@ void* lf_realloc(void* ptr, size_t size) noexcept
         Descriptor* desc = info.GetDesc();
         ASSERT(desc);
 
-        uint64_t blockSize = desc->blockSize;
+        uint32_t blockSize = desc->blockSize;
         // prevent invalid memory access if size < blockSize
         blockSize = std::min(size, blockSize);
         memcpy(newPtr, ptr, blockSize);
@@ -697,8 +709,8 @@ void lf_free(void* ptr) noexcept
 
     // ptr may be aligned, need to recompute to be sure
     char* superblock = desc->superblock;
-    uint64_t blockSize = desc->blockSize;
-    uint64_t idx = ComputeIdx(superblock, (char*)ptr, scIdx);
+    uint32_t blockSize = desc->blockSize;
+    uint32_t idx = ComputeIdx(superblock, (char*)ptr, scIdx);
     // recompute
     ptr = (char*)(superblock + idx * blockSize);
 

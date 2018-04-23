@@ -79,16 +79,14 @@ struct TCacheBin;
 #define LG_TAG              18
 #define MAX_BLOCK_NUM       (2 << LG_MAX_BLOCK_NUM)
 
-// helper struct to fill descriptor_t::anchor
-// used as atomic_uint64_t
 struct Anchor
 {
-    uint64_t state : 2;
-    uint64_t avail : LG_MAX_BLOCK_NUM;
-    uint64_t count : LG_MAX_BLOCK_NUM;
-    uint64_t tag : LG_TAG;
+    uint32_t state : 2;
+    uint32_t avail : LG_MAX_BLOCK_NUM;
+    uint32_t count : LG_MAX_BLOCK_NUM;
+    uint32_t tag : LG_TAG;
 } LFMALLOC_ATTR(packed);
-\
+
 STATIC_ASSERT(sizeof(Anchor) == sizeof(uint64_t), "Invalid anchor size");
 
 struct DescriptorNode
@@ -129,7 +127,6 @@ STATIC_ASSERT(sizeof(DescriptorNode) == sizeof(uint64_t), "Invalid descriptor no
 struct Descriptor
 {
     // list node pointers
-    // preferably 16-byte aligned
     // used in free descriptor list
     std::atomic<DescriptorNode> nextFree;
     // used in partial descriptor list
@@ -139,8 +136,8 @@ struct Descriptor
 
     char* superblock;
     ProcHeap* heap;
-    uint64_t blockSize; // block size
-    uint64_t maxcount;
+    uint32_t blockSize; // block size
+    uint32_t maxcount;
 } LFMALLOC_ATTR_CACHE_ALIGNED;
 
 // at least one ProcHeap instance exists for each sizeclass
