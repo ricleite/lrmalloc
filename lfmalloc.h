@@ -5,6 +5,7 @@
 #include <atomic>
 
 #include "defines.h"
+#include "log.h"
 
 #define lf_malloc malloc
 #define lf_free free
@@ -87,17 +88,40 @@ struct Anchor
     uint64_t count : LG_MAX_BLOCK_NUM;
     uint64_t tag : LG_TAG;
 } LFMALLOC_ATTR(packed);
-
+\
 STATIC_ASSERT(sizeof(Anchor) == sizeof(uint64_t), "Invalid anchor size");
 
-// used with double-cas for atomic ops
 struct DescriptorNode
 {
+public:
     // ptr
-    Descriptor* desc;
+    Descriptor* _desc;
     // aba counter
-    uint64_t counter;
+    // uint64_t _counter;
+
+public:
+    void Set(Descriptor* desc, uint64_t counter)
+    {
+        // desc must be cacheline aligned
+        ASSERT(((uint64_t)desc & CACHELINE_MASK) == 0);
+        // counter may be incremented but will always be stored in
+        //  LG_CACHELINE bits
+        _desc = (Descriptor*)((uint64_t)desc | (counter & CACHELINE_MASK));
+    }
+
+    Descriptor* GetDesc() const
+    {
+        return (Descriptor*)((uint64_t)_desc & ~CACHELINE_MASK);
+    }
+
+    uint64_t GetCounter() const
+    {
+        return (uint64_t)((uint64_t)_desc & CACHELINE_MASK);
+    }
+
 } LFMALLOC_ATTR(packed);
+
+STATIC_ASSERT(sizeof(DescriptorNode) == sizeof(uint64_t), "Invalid descriptor node size");
 
 // Superblock descriptor
 // needs to be cache-line aligned

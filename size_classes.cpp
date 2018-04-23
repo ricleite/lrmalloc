@@ -20,6 +20,9 @@ size_t SizeClassLookup[MAX_SZ] = { 0 };
 
 void InitSizeClass()
 {
+    // each superblock has to contain several blocks
+    // and it has to contain blocks *perfectly*
+    //  e.g no space left after last block
     for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx)
     {
         SizeClassData& sc = SizeClasses[scIdx];
@@ -33,8 +36,16 @@ void InitSizeClass()
         while (blockSize >= sbSize)
             sbSize += sc.sbSize;
 
-        // increase superblock size to at least 64kB
-        while (sbSize < (16 * PAGE))
+        sc.sbSize = sbSize;
+    }
+
+    // increase superblock size if need
+    for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx)
+    {
+        SizeClassData& sc = SizeClasses[scIdx];
+        size_t sbSize = sc.sbSize;
+        // 2MB
+        while (sbSize < (PAGE * PAGE))
             sbSize += sc.sbSize;
 
         sc.sbSize = sbSize;

@@ -16,7 +16,7 @@
 
 // global variables
 // descriptor recycle list
-std::atomic<DescriptorNode> AvailDesc({ nullptr, 0 });
+std::atomic<DescriptorNode> AvailDesc({ nullptr });
 // malloc init state
 bool MallocInit = false;
 // heaps, one heap per size class
@@ -120,41 +120,39 @@ SizeClassData* ProcHeap::GetSizeClass() const
 
 Descriptor* ListPopPartial(ProcHeap* heap)
 {
-    DescriptorNode oldHead = heap->partialList.load();
+    std::atomic<DescriptorNode>& list = heap->partialList;
+    DescriptorNode oldHead = list.load();
     DescriptorNode newHead;
     do
     {
-        if (!oldHead.desc)
+        Descriptor* oldDesc = oldHead.GetDesc();
+        if (!oldDesc)
             return nullptr;
 
-        newHead = oldHead.desc->nextPartial.load();
-        newHead.counter = oldHead.counter;
+        newHead = oldDesc->nextPartial.load();
+        Descriptor* desc = newHead.GetDesc();
+        uint64_t counter = oldHead.GetCounter();
+        newHead.Set(desc, counter);
     }
-    while (!heap->partialList.compare_exchange_weak(
-                oldHead, newHead));
+    while (!list.compare_exchange_weak(oldHead, newHead));
 
-    return oldHead.desc;
+    return oldHead.GetDesc();
 }
 
 void ListPushPartial(Descriptor* desc)
 {
     ProcHeap* heap = desc->heap;
+    std::atomic<DescriptorNode>& list = heap->partialList;
 
-    DescriptorNode oldHead = heap->partialList.load();
-    DescriptorNode newHead = { desc, oldHead.counter + 1 };
+    DescriptorNode oldHead = list.load();
+    DescriptorNode newHead;
+    newHead.Set(desc, oldHead.GetCounter() + 1);
     do
     {
-        ASSERT(oldHead.desc != newHead.desc);
-        newHead.desc->nextPartial.store(oldHead); 
+        ASSERT(oldHead.GetDesc() != newHead.GetDesc());
+        newHead.GetDesc()->nextPartial.store(oldHead); 
     }
-    while (!heap->partialList.compare_exchange_weak(
-                oldHead, newHead));
-}
-
-void ListRemoveEmptyDesc(ProcHeap* heap, Descriptor* desc)
-{
-    // @todo: try a best-effort search to remove desc?
-    // or do an actual search, but need to ensure that ABA can't happen
+    while (!list.compare_exchange_weak(oldHead, newHead));
 }
 
 void HeapPushPartial(Descriptor* desc)
@@ -278,14 +276,15 @@ Descriptor* DescAlloc()
     DescriptorNode oldHead = AvailDesc.load();
     while (true)
     {
-        if (oldHead.desc)
+        Descriptor* desc = oldHead.GetDesc();
+        if (desc)
         {
-            DescriptorNode newHead = oldHead.desc->nextFree.load();
-            newHead.counter = oldHead.counter;
+            DescriptorNode newHead = desc->nextFree.load();
+            newHead.Set(newHead.GetDesc(), oldHead.GetCounter());
             if (AvailDesc.compare_exchange_weak(oldHead, newHead))
             {
-                ASSERT(oldHead.desc->blockSize == 0);
-                return oldHead.desc;
+                ASSERT(desc->blockSize == 0);
+                return desc;
             }
         }
         else
@@ -308,14 +307,14 @@ Descriptor* DescAlloc()
                 {
                     Descriptor* curr = (Descriptor*)currPtr;
                     if (prev)
-                        prev->nextFree.store({curr, 0});
+                        prev->nextFree.store({ curr });
 
                     prev = curr;
                     currPtr = currPtr + sizeof(Descriptor);
                     currPtr = ALIGN_ADDR(currPtr, CACHELINE);
                 }
 
-                prev->nextFree.store({nullptr, 0});
+                prev->nextFree.store({ nullptr });
 
                 // add list to available descriptors
                 DescriptorNode oldHead = AvailDesc.load();
@@ -323,8 +322,7 @@ Descriptor* DescAlloc()
                 do
                 {
                     prev->nextFree.store(oldHead);
-                    newHead.desc = first;
-                    newHead.counter = oldHead.counter + 1;
+                    newHead.Set(first, oldHead.GetCounter() + 1);
                 }
                 while (!AvailDesc.compare_exchange_weak(oldHead, newHead));
             }
@@ -342,8 +340,8 @@ void DescRetire(Descriptor* desc)
     do
     {
         desc->nextFree.store(oldHead);
-        newHead.desc = desc;
-        newHead.counter = oldHead.counter + 1;
+
+        newHead.Set(desc, oldHead.GetCounter() + 1);
     }
     while (!AvailDesc.compare_exchange_weak(oldHead, newHead));
 }
@@ -471,7 +469,7 @@ void InitMalloc()
     for (size_t idx = 0; idx < MAX_SZ_IDX; ++idx)
     {
         ProcHeap& heap = Heaps[idx];
-        heap.partialList.store({nullptr, 0});
+        heap.partialList.store({ nullptr });
         heap.scIdx = idx;
     }
 }

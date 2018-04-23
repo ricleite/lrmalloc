@@ -15,7 +15,8 @@
 #define PAGE        ((size_t)(1U << LG_PAGE))
 #define HUGEPAGE    ((size_t)(1U << LG_HUGEPAGE))
 
-#define PAGE_MASK   (PAGE - 1)
+#define CACHELINE_MASK  (CACHELINE - 1)
+#define PAGE_MASK       (PAGE - 1)
 
 // minimum alignment requirement all allocations must meet
 // "address returned by malloc will be suitably aligned to store any kind of variable"
