@@ -582,7 +582,7 @@ void* lf_realloc(void* ptr, size_t size) noexcept
         Descriptor* desc = info.GetDesc();
         ASSERT(desc);
 
-        uint32_t blockSize = desc->blockSize;
+        size_t blockSize = desc->blockSize;
         // prevent invalid memory access if size < blockSize
         blockSize = std::min(size, blockSize);
         memcpy(newPtr, ptr, blockSize);
