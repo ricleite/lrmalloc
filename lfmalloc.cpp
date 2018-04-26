@@ -575,20 +575,35 @@ extern "C"
 void* lf_realloc(void* ptr, size_t size) noexcept
 {
     LOG_DEBUG();
-    void* newPtr = lf_malloc(size);
-    if (LIKELY(ptr && newPtr))
+
+    size_t blockSize = 0;
+    if (LIKELY(ptr != nullptr))
     {
         PageInfo info = GetPageInfoForPtr(ptr);
         Descriptor* desc = info.GetDesc();
         ASSERT(desc);
 
-        size_t blockSize = desc->blockSize;
-        // prevent invalid memory access if size < blockSize
-        blockSize = std::min(size, blockSize);
-        memcpy(newPtr, ptr, blockSize);
+        blockSize = desc->blockSize;
+
+        // realloc with size == 0 is the same as free(ptr)
+        if (UNLIKELY(size == 0))
+        {
+            lf_free(ptr);
+            return nullptr;
+        }
+
+        // nothing to do, block is already large enough
+        if (UNLIKELY(size <= blockSize))
+            return ptr;
     }
 
-    lf_free(ptr);
+    void* newPtr = lf_malloc(size);
+    if (LIKELY(ptr && newPtr))
+    {
+        memcpy(newPtr, ptr, blockSize);
+        lf_free(ptr);
+    }
+
     return newPtr;
 }
 
