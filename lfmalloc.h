@@ -30,28 +30,36 @@ extern "C"
 {
     // malloc interface
     void* lf_malloc(size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(1);
+        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(1)
+        LFMALLOC_CACHE_ALIGNED_FN;
     void lf_free(void* ptr) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW;
+        LFMALLOC_EXPORT LFMALLOC_NOTHROW
+        LFMALLOC_CACHE_ALIGNED_FN;
     void* lf_calloc(size_t n, size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE2(1, 2);
+        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE2(1, 2)
+        LFMALLOC_CACHE_ALIGNED_FN;
     void* lf_realloc(void* ptr, size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(2);
+        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(2)
+        LFMALLOC_CACHE_ALIGNED_FN;
     // utilities
     size_t lf_malloc_usable_size(void* ptr) noexcept;
     // memory alignment ops
     int lf_posix_memalign(void** memptr, size_t alignment, size_t size) noexcept
         LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ATTR(nonnull(1))
-        LFMALLOC_ALLOC_SIZE(3);
+        LFMALLOC_ALLOC_SIZE(3) LFMALLOC_CACHE_ALIGNED_FN;
     void* lf_aligned_alloc(size_t alignment, size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(2);
+        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(2)
+        LFMALLOC_CACHE_ALIGNED_FN;
     void* lf_valloc(size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(1);
+        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(1)
+        LFMALLOC_CACHE_ALIGNED_FN;
     // obsolete alignment oos
     void* lf_memalign(size_t alignment, size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(2);
+        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(2)
+        LFMALLOC_CACHE_ALIGNED_FN;
     void* lf_pvalloc(size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(1);
+        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(1)
+        LFMALLOC_CACHE_ALIGNED_FN;
 }
 
 // superblock states
@@ -138,7 +146,7 @@ struct Descriptor
     ProcHeap* heap;
     uint32_t blockSize; // block size
     uint32_t maxcount;
-} LFMALLOC_ATTR_CACHE_ALIGNED;
+} LFMALLOC_CACHE_ALIGNED;
 
 // at least one ProcHeap instance exists for each sizeclass
 struct ProcHeap

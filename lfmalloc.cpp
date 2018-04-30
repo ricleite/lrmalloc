@@ -389,29 +389,31 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
     //  blocks with a single CAS
     while (cache->GetBlockNum() > 0)
     {
-        char* tail = cache->PopBlock();
-        char* head = tail;
-        PageInfo info = GetPageInfoForPtr(tail);
+        char* head = cache->PeekBlock();
+        char* tail = head;
+        PageInfo info = GetPageInfoForPtr(head);
         Descriptor* desc = info.GetDesc();
         char* superblock = desc->superblock;
 
+        // cache is a linked list of blocks
+        // superblock free list is also a linked list of blocks
+        // can optimize transfers of blocks between these 2 entities
+        //  by exploiting existing structure
         uint32_t blockCount = 1;
         // check if next cache blocks are in the same superblock
         // same superblock, same descriptor
-        while (cache->GetBlockNum() > 0)
+        while (cache->GetBlockNum() > blockCount)
         {
-            char* ptr = cache->PeekBlock();
+            char* ptr = *(char**)tail;
             if (ptr < superblock || ptr >= superblock + sbSize)
                 break; // ptr not in superblock
 
-            // remove block from cache
-            cache->PopBlock();
-
             // ptr in superblock, add to "list"
             ++blockCount;
-            *(char**)ptr = head;
-            head = ptr;
+            tail = ptr;
         }
+
+        cache->PopList(*(char**)tail, blockCount);
 
         // add list to desc, update anchor
         uint32_t idx = ComputeIdx(superblock, head, scIdx);
@@ -486,15 +488,6 @@ void InitMalloc()
     }
 }
 
-LFMALLOC_INLINE
-size_t GetOrInitSizeClass(size_t size)
-{
-    if (UNLIKELY(!MallocInit))
-        InitMalloc();
-
-    return GetSizeClass(size);
-}
-
 void lf_malloc_initialize() { }
 
 void lf_malloc_finalize() { }
@@ -513,10 +506,12 @@ void* lf_malloc(size_t size) noexcept
 {
     LOG_DEBUG("size: %lu", size);
 
-    // size class calculation
-    size_t scIdx = GetOrInitSizeClass(size);
+    // ensure malloc is initialized
+    if (UNLIKELY(!MallocInit))
+        InitMalloc();
+
     // large block allocation
-    if (UNLIKELY(!scIdx))
+    if (size > MAX_SZ)
     {
         size_t pages = PAGE_CEILING(size);
         Descriptor* desc = DescAlloc();
@@ -541,6 +536,10 @@ void* lf_malloc(size_t size) noexcept
         LOG_DEBUG("large, ptr: %p", ptr);
         return (void*)ptr;
     }
+
+    // size class calculation
+    // ASSERT(size <= MAX_SZ);
+    size_t scIdx = GetSizeClass(size);
 
     TCacheBin* cache = &TCache[scIdx];
     // fill cache if needed

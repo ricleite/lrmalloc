@@ -10,9 +10,9 @@
 // idx 0 reserved for large size classes
 #define MAX_SZ_IDX 40
 #define LG_MAX_SIZE_IDX 6
-// size of first size not covered by a size class
-// allocations with size < MAX_SZ are covered by a size class
-#define MAX_SZ (1 << 14)
+// last size covered by a size class
+// allocations with size > MAX_SZ are not covered by a size class
+#define MAX_SZ ((1 << 13) + (1 << 11) * 3)
 
 // contains size classes
 struct SizeClassData
@@ -34,17 +34,14 @@ public:
 // initialized at compile time
 extern SizeClassData SizeClasses[MAX_SZ_IDX];
 // *not* initialized at compile time, needs InitSizeClass() call
-extern size_t SizeClassLookup[MAX_SZ];
+extern size_t SizeClassLookup[MAX_SZ + 1];
 
 // must be called before GetSizeClass
 void InitSizeClass();
 
 inline size_t GetSizeClass(size_t size)
 {
-    if (LIKELY(size < MAX_SZ))
-        return SizeClassLookup[size];
-
-    return 0;
+    return SizeClassLookup[size];
 }
 
 // size class data, from jemalloc 5.0

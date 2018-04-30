@@ -16,7 +16,7 @@ SizeClassData SizeClasses[MAX_SZ_IDX] = {
     SIZE_CLASSES
 };
 
-size_t SizeClassLookup[MAX_SZ] = { 0 };
+size_t SizeClassLookup[MAX_SZ + 1] = { 0 };
 
 void InitSizeClass()
 {

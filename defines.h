@@ -54,7 +54,9 @@
 // https://www.ibm.com/support/knowledgecenter/en/SSVUN6_1.1.0/com.ibm.xlcpp11.zlinux.doc/language_ref/attr_tls_model.html 
 #define LFMALLOC_TLS_INIT_EXEC LFMALLOC_ATTR(tls_model("initial-exec"))
 
-#define LFMALLOC_ATTR_CACHE_ALIGNED LFMALLOC_ATTR(aligned(CACHELINE))
+#define LFMALLOC_CACHE_ALIGNED LFMALLOC_ATTR(aligned(CACHELINE))
+
+#define LFMALLOC_CACHE_ALIGNED_FN LFMALLOC_ATTR(aligned(CACHELINE))
 
 #define STATIC_ASSERT(x, m) static_assert(x, m)
 

@@ -17,8 +17,13 @@ public:
     void PushBlock(char* block);
     // push block list, cache *must* be empty
     void PushList(char* block, uint32_t length);
+
     char* PopBlock(); // can return nullptr
+    // manually popped list of blocks and now need to update cache
+    // `block` is the new head
+    void PopList(char* block, uint32_t length);
     char* PeekBlock() const { return _block; }
+
     uint32_t GetBlockNum() const { return _blockNum; }
 
     // slow operations like fill/flush handled in cache user
@@ -53,9 +58,17 @@ inline char* TCacheBin::PopBlock()
     return ret;
 }
 
+inline void TCacheBin::PopList(char* block, uint32_t length)
+{
+    ASSERT(_blockNum >= length);
+
+    _block = block;
+    _blockNum -= length;
+}
+
 // use tls init exec model
 extern __thread TCacheBin TCache[MAX_SZ_IDX]
-    LFMALLOC_TLS_INIT_EXEC LFMALLOC_ATTR_CACHE_ALIGNED;
+    LFMALLOC_TLS_INIT_EXEC LFMALLOC_CACHE_ALIGNED;
 
 #endif // __TCACHE_H_
 
