@@ -51,13 +51,17 @@ void InitSizeClass()
         sc.sbSize = sbSize;
     }
 
-    // fill blockNum
+    // fill blockNum and cacheBlockNum
     for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx)
     {
         SizeClassData& sc = SizeClasses[scIdx];
+        // blockNum calc
         sc.blockNum = sc.sbSize / sc.blockSize;
+        // cacheBlockNum calc
+        sc.cacheBlockNum = sc.blockNum * 1;
         ASSERT(sc.blockNum > 0);
         ASSERT(sc.blockNum < MAX_BLOCK_NUM);
+        ASSERT(sc.blockNum >= sc.cacheBlockNum);
     }
 
     // first size class reserved for large allocations

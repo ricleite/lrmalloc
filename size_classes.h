@@ -25,6 +25,8 @@ public:
     uint32_t sbSize;
     // cached number of blocks, equal to sbSize / blockSize
     uint32_t blockNum;
+    // number of blocks held by thread-specific caches
+    uint32_t cacheBlockNum;
 
 public:
     size_t GetBlockNum() const { return blockNum; }

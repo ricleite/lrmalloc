@@ -4,6 +4,8 @@
 
 #include <cinttypes>
 
+// a ptr is sizeof(void*) bytes
+#define LG_PTR          sizeof(void*)
 // a cache line is 64 bytes
 #define LG_CACHELINE    6
 // a page is 4KB
@@ -11,10 +13,12 @@
 // a huge page is 2MB
 #define LG_HUGEPAGE     21
 
+#define PTR_SZ      ((size_t)(1U << LG_PTR))
 #define CACHELINE   ((size_t)(1U << LG_CACHELINE))
 #define PAGE        ((size_t)(1U << LG_PAGE))
 #define HUGEPAGE    ((size_t)(1U << LG_HUGEPAGE))
 
+#define PTR_MASK        (PTR_SZ - 1)
 #define CACHELINE_MASK  (CACHELINE - 1)
 #define PAGE_MASK       (PAGE - 1)
 
@@ -22,10 +26,12 @@
 // "address returned by malloc will be suitably aligned to store any kind of variable"
 #define MIN_ALIGN sizeof(void*)
 
-// returns smallest address >= addr with alignment align
-#define ALIGN_ADDR(addr, align) \
-    ( __typeof__ (addr))(((size_t)(addr) + (align - 1)) & ((~(align)) + 1))
+// returns smallest value >= value with alignment align
+#define ALIGN_VAL(val, align) \
+    ( __typeof__ (val))(((size_t)(val) + (align - 1)) & ((~(align)) + 1))
 
+// returns smallest address >= addr with alignment align
+#define ALIGN_ADDR(addr, align) ALIGN_VAL(addr, align)
 
 // return smallest page size multiple that is >= s
 #define PAGE_CEILING(s) \

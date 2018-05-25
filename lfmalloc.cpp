@@ -370,7 +370,7 @@ void FillCache(size_t scIdx, TCacheBin* cache)
     SizeClassData* sc = &SizeClasses[scIdx];
     (void)sc;
     ASSERT(blockNum > 0);
-    ASSERT(blockNum <= sc->blockNum);
+    ASSERT(blockNum <= sc->cacheBlockNum);
 }
 
 void FlushCache(size_t scIdx, TCacheBin* cache)
@@ -488,30 +488,15 @@ void InitMalloc()
     }
 }
 
-void lf_malloc_initialize() { }
-
-void lf_malloc_finalize() { }
-
-void lf_malloc_thread_initialize() { }
-
-void lf_malloc_thread_finalize()
+LFMALLOC_INLINE
+void* do_malloc(size_t size)
 {
-    // flush caches
-    for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx)
-        FlushCache(scIdx, &TCache[scIdx]);
-}
-
-extern "C"
-void* lf_malloc(size_t size) noexcept
-{
-    LOG_DEBUG("size: %lu", size);
-
     // ensure malloc is initialized
     if (UNLIKELY(!MallocInit))
         InitMalloc();
 
     // large block allocation
-    if (size > MAX_SZ)
+    if (UNLIKELY(size > MAX_SZ))
     {
         size_t pages = PAGE_CEILING(size);
         Descriptor* desc = DescAlloc();
@@ -538,7 +523,6 @@ void* lf_malloc(size_t size) noexcept
     }
 
     // size class calculation
-    // ASSERT(size <= MAX_SZ);
     size_t scIdx = GetSizeClass(size);
 
     TCacheBin* cache = &TCache[scIdx];
@@ -547,6 +531,164 @@ void* lf_malloc(size_t size) noexcept
         FillCache(scIdx, cache);
 
     return cache->PopBlock();
+}
+
+LFMALLOC_INLINE
+bool isPowerOfTwo(size_t x)
+{
+    // https://stackoverflow.com/questions/3638431/determine-if-an-int-is-a-power-of-2-or-not-in-a-single-line
+    return x && !(x & (x - 1));
+}
+
+LFMALLOC_INLINE
+void* do_aligned_alloc(size_t alignment, size_t size)
+{
+    if (UNLIKELY(!isPowerOfTwo(alignment)))
+        return nullptr;
+
+    size = ALIGN_VAL(size, alignment);
+
+    ASSERT(size > 0 && alignment > 0 && size >= alignment);
+
+    // @todo: almost equal logic to do_malloc, DRY
+    // ensure malloc is initialized
+    if (UNLIKELY(!MallocInit))
+        InitMalloc();
+
+    // allocations smaller than PAGE will be correctly aligned
+    // this is because size >= alignment, and size will map to a small class size
+    //  with the formula 2^X + A*2^(X-1) + C*2^(X-2)
+    // since size is a multiple of alignment, the lowest size class power of two
+    //  is already >= alignment
+    // this does not work if allocation > PAGE even if it's a small class size,
+    //  because superblock for those allocations is only guaranteed
+    //  to be page aligned
+    if (UNLIKELY(size > PAGE))
+    {
+        // hotfix solution for this case is to force allocation to be large
+        size = MAX_SZ + 1;
+    }
+
+    // large block allocation
+    if (UNLIKELY(size > MAX_SZ))
+    {
+        // large blocks are page-aligned
+        // if user asks for a diabolical alignment, need more pages to fulfil it
+        bool const needsMorePages = (alignment > PAGE);
+        if (UNLIKELY(needsMorePages))
+            size += alignment;
+
+        size_t pages = PAGE_CEILING(size);
+        Descriptor* desc = DescAlloc();
+        ASSERT(desc);
+
+        char* ptr = (char*)PageAlloc(pages);
+
+        desc->heap = nullptr;
+        desc->blockSize = pages;
+        desc->maxcount = 1;
+        desc->superblock = ptr;
+
+        Anchor anchor;
+        anchor.avail = 0;
+        anchor.count = 0;
+        anchor.state = SB_FULL;
+        anchor.tag = 0;
+
+        desc->anchor.store(anchor);
+
+        RegisterDesc(desc);
+
+        if (UNLIKELY(needsMorePages))
+        {
+            ptr = ALIGN_ADDR(ptr, alignment);
+            // aligned block must fit into allocated pages
+            ASSERT((ptr + size) <= (desc->superblock + desc->blockSize));
+
+            // need to update page so that descriptors can be found
+            //  for large allocations aligned to "middle" of superblocks
+            UpdatePageMap(nullptr, ptr, desc, 0L);
+        }
+
+        LOG_DEBUG("large, ptr: %p", ptr);
+        return (void*)ptr;
+    }
+
+    ASSERT(size <= PAGE);
+
+    // size class calculation
+    size_t scIdx = GetSizeClass(size);
+
+    TCacheBin* cache = &TCache[scIdx];
+    // fill cache if needed
+    if (UNLIKELY(cache->GetBlockNum() == 0))
+        FillCache(scIdx, cache);
+
+    return cache->PopBlock();
+}
+
+LFMALLOC_INLINE
+void do_free(void* ptr)
+{
+    PageInfo info = GetPageInfoForPtr(ptr);
+    Descriptor* desc = info.GetDesc();
+    // @todo: this can happen with dynamic loading
+    // need to print correct message
+    ASSERT(desc);
+
+    size_t scIdx = info.GetScIdx();
+ 
+    LOG_DEBUG("Heap %p, Desc %p, ptr %p", heap, desc, ptr);
+
+    // large allocation case
+    if (UNLIKELY(!scIdx))
+    {
+        char* superblock = desc->superblock;
+
+        // unregister descriptor
+        UnregisterDesc(nullptr, superblock);
+        // aligned large allocation case
+        if (UNLIKELY((char*)ptr != superblock))
+            UnregisterDesc(nullptr, (char*)ptr);
+
+        // free superblock
+        PageFree(superblock, desc->blockSize);
+
+        // desc cannot be in any partial list, so it can be
+        //  immediately reused
+        DescRetire(desc);
+        return;
+    }
+
+    TCacheBin* cache = &TCache[scIdx];
+    SizeClassData* sc = &SizeClasses[scIdx];
+
+    // flush cache if need
+    if (UNLIKELY(cache->GetBlockNum() >= sc->cacheBlockNum))
+        FlushCache(scIdx, cache);
+
+    cache->PushBlock((char*)ptr);
+}
+
+void lf_malloc_initialize() { }
+
+void lf_malloc_finalize() { }
+
+void lf_malloc_thread_initialize() { }
+
+void lf_malloc_thread_finalize()
+{
+    // flush caches
+    for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx)
+        FlushCache(scIdx, &TCache[scIdx]);
+}
+
+extern "C"
+void* lf_malloc(size_t size) noexcept
+{
+    LOG_DEBUG("size: %lu", size);
+
+    return do_malloc(size);
 }
 
 extern "C"
@@ -559,7 +701,7 @@ void* lf_calloc(size_t n, size_t size) noexcept
     if (UNLIKELY(n == 0 || allocSize / n != size))
         return nullptr;
 
-    void* ptr = lf_malloc(allocSize);
+    void* ptr = do_malloc(allocSize);
 
     // calloc returns zero-filled memory
     // @todo: optimize, memory may be already zero-filled 
@@ -587,7 +729,7 @@ void* lf_realloc(void* ptr, size_t size) noexcept
         // realloc with size == 0 is the same as free(ptr)
         if (UNLIKELY(size == 0))
         {
-            lf_free(ptr);
+            do_free(ptr);
             return nullptr;
         }
 
@@ -596,11 +738,11 @@ void* lf_realloc(void* ptr, size_t size) noexcept
             return ptr;
     }
 
-    void* newPtr = lf_malloc(size);
+    void* newPtr = do_malloc(size);
     if (LIKELY(ptr && newPtr))
     {
         memcpy(newPtr, ptr, blockSize);
-        lf_free(ptr);
+        do_free(ptr);
     }
 
     return newPtr;
@@ -613,40 +755,37 @@ size_t lf_malloc_usable_size(void* ptr) noexcept
     if (UNLIKELY(ptr == nullptr))
         return 0;
 
-    // @todo: could optimize by trying to use scIdx
-    // albeit that does require an extra branch
     PageInfo info = GetPageInfoForPtr(ptr);
-    Descriptor* desc = info.GetDesc();
-    return desc->blockSize;
+
+    size_t scIdx = info.GetScIdx();
+    // large allocation case
+    if (UNLIKELY(!scIdx))
+    {
+        Descriptor* desc = info.GetDesc();
+        ASSERT(desc);
+        return desc->blockSize;
+    }
+
+    SizeClassData* sc = &SizeClasses[scIdx];
+    return sc->blockSize;
 }
 
 extern "C"
 int lf_posix_memalign(void** memptr, size_t alignment, size_t size) noexcept
 {
     LOG_DEBUG();
-    // @todo: this is so very inefficient
-    size = std::max(alignment, size) * 2;
-    char* ptr = (char*)malloc(size);
-    if (!ptr)
+
+    // "EINVAL - The alignment argument was not a power of two, or
+    //  was not a multiple of sizeof(void *)"
+    if (UNLIKELY(!isPowerOfTwo(alignment) || (alignment & PTR_MASK)))
+        return EINVAL;
+
+    void* ptr = do_aligned_alloc(alignment, size);
+    if (UNLIKELY(ptr == nullptr))
         return ENOMEM;
 
-    // because of alignment, might need to update pagemap
-    // aligned large allocations need to correctly point to desc
-    //  wherever the block starts (might not be start due to alignment)
-    PageInfo info = GetPageInfoForPtr(ptr);
-    Descriptor* desc = info.GetDesc();
-    ASSERT(desc);
-
-    LOG_DEBUG("original ptr: %p", ptr);
-    ptr = ALIGN_ADDR(ptr, alignment);
-
-    // need to update page so that descriptors can be found
-    //  for large allocations aligned to "middle" of superblocks
-    if (UNLIKELY(!desc->heap))
-        UpdatePageMap(nullptr, ptr, desc, 0L);
-
-    LOG_DEBUG("provided ptr: %p", ptr);
-    *memptr = ptr;
+    ASSERT(memptr);
+    *memptr = ptr; 
     return 0;
 }
 
@@ -654,34 +793,28 @@ extern "C"
 void* lf_aligned_alloc(size_t alignment, size_t size) noexcept
 {
     LOG_DEBUG();
-    void* ptr = nullptr;
-    int ret = lf_posix_memalign(&ptr, alignment, size);
-    if (ret)
-        return nullptr;
-
-    return ptr;
+    return do_aligned_alloc(alignment, size);
 }
 
 extern "C"
 void* lf_valloc(size_t size) noexcept
 {
     LOG_DEBUG();
-    return lf_aligned_alloc(PAGE, size);
+    return do_aligned_alloc(PAGE, size);
 }
 
 extern "C"
 void* lf_memalign(size_t alignment, size_t size) noexcept
 {
     LOG_DEBUG();
-    return lf_aligned_alloc(alignment, size);
+    return do_aligned_alloc(alignment, size);
 }
 
 extern "C"
 void* lf_pvalloc(size_t size) noexcept
 {
     LOG_DEBUG();
-    size = ALIGN_ADDR(size, PAGE);
-    return lf_aligned_alloc(PAGE, size);
+    return do_aligned_alloc(PAGE, size);
 }
 
 extern "C"
@@ -691,51 +824,7 @@ void lf_free(void* ptr) noexcept
     if (UNLIKELY(!ptr))
         return;
 
-    PageInfo info = GetPageInfoForPtr(ptr);
-    Descriptor* desc = info.GetDesc();
-    // @todo: this can happen with dynamic loading
-    // need to print correct message
-    ASSERT(desc);
-
-    size_t scIdx = info.GetScIdx();
-    
-    LOG_DEBUG("Heap %p, Desc %p, ptr %p", heap, desc, ptr);
-
-    // large allocation case
-    if (UNLIKELY(!scIdx))
-    {
-        char* superblock = desc->superblock;
-
-        // unregister descriptor
-        UnregisterDesc(nullptr, superblock);
-        // aligned large allocation case
-        if (UNLIKELY((char*)ptr != superblock))
-            UnregisterDesc(nullptr, (char*)ptr);
-
-        // free superblock
-        PageFree(superblock, desc->blockSize);
-
-        // desc cannot be in any partial list, so it can be
-        //  immediately reused
-        DescRetire(desc);
-        return;
-    }
-
-    // ptr may be aligned, need to recompute to be sure
-    char* superblock = desc->superblock;
-    uint32_t blockSize = desc->blockSize;
-    uint32_t idx = ComputeIdx(superblock, (char*)ptr, scIdx);
-    // recompute
-    ptr = (char*)(superblock + idx * blockSize);
-
-    TCacheBin* cache = &TCache[scIdx];
-    SizeClassData* sc = &SizeClasses[scIdx];
-
-    // flush cache if need
-    if (UNLIKELY(cache->GetBlockNum() >= sc->GetBlockNum()))
-        FlushCache(scIdx, cache);
-
-    cache->PushBlock((char*)ptr);
+    do_free(ptr);
 }
 
 
