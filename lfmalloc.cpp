@@ -563,15 +563,12 @@ void* do_aligned_alloc(size_t alignment, size_t size)
     // this does not work if allocation > PAGE even if it's a small class size,
     //  because superblock for those allocations is only guaranteed
     //  to be page aligned
+    // force such allocations to become large block allocs
     if (UNLIKELY(size > PAGE))
     {
         // hotfix solution for this case is to force allocation to be large
-        size = MAX_SZ + 1;
-    }
+        size = std::max<size_t>(size, MAX_SZ + 1);
 
-    // large block allocation
-    if (UNLIKELY(size > MAX_SZ))
-    {
         // large blocks are page-aligned
         // if user asks for a diabolical alignment, need more pages to fulfil it
         bool const needsMorePages = (alignment > PAGE);
