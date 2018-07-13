@@ -18,8 +18,13 @@ If successfully compiled, you can link lrmalloc with your application at compile
 ```console
 -llrmalloc
 ```
-or you can dynamically link it with your application by using LD_PRELOAD (if your application was not statically linked with another memory allocator)
+or you can dynamically link it with your application by using LD_PRELOAD (if your application was not statically linked with another memory allocator).
 ```console
 LD_PRELOAD=lrmalloc.so ./your_application
 ```
- 
+## Copyright
+
+Licence: MIT
+
+Read file [COPYING](COPYING).
+
