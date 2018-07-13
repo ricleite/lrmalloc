@@ -1,7 +1,7 @@
 
 #include "defines.h"
 #include "size_classes.h"
-#include "lfmalloc.h"
+#include "lrmalloc.h"
 #include "log.h"
 
 #define SIZE_CLASS_bin_yes(blockSize, pages) \

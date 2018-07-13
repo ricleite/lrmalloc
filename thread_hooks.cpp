@@ -3,7 +3,7 @@
 #include <pthread.h>
 
 #include "defines.h"
-#include "lfmalloc.h"
+#include "lrmalloc.h"
 
 // handle process init/exit hooks
 pthread_key_t destructor_key;

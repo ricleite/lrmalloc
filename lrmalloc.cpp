@@ -7,7 +7,7 @@
 // for ENOMEM
 #include <errno.h>
 
-#include "lfmalloc.h"
+#include "lrmalloc.h"
 #include "size_classes.h"
 #include "pages.h"
 #include "pagemap.h"
