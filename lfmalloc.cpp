@@ -264,7 +264,6 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     anchor.avail = maxcount;
     anchor.count = 0;
     anchor.state = SB_FULL;
-    anchor.tag = 0;
 
     desc->anchor.store(anchor);
 
@@ -276,8 +275,8 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     // or leaving superblock as available in a partial list
     RegisterDesc(desc);
 
-    if (anchor.state == SB_PARTIAL)
-        HeapPushPartial(desc);
+    // if state changes to SB_PARTIAL, desc must be added to partial list
+    ASSERT(anchor.state == SB_FULL);
 
     blockNum += maxcount;
 }
@@ -511,7 +510,6 @@ void* do_malloc(size_t size)
         anchor.avail = 0;
         anchor.count = 0;
         anchor.state = SB_FULL;
-        anchor.tag = 0;
 
         desc->anchor.store(anchor);
 
@@ -590,7 +588,6 @@ void* do_aligned_alloc(size_t alignment, size_t size)
         anchor.avail = 0;
         anchor.count = 0;
         anchor.state = SB_FULL;
-        anchor.tag = 0;
 
         desc->anchor.store(anchor);
 

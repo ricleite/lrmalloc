@@ -12,7 +12,7 @@
 // which uses 48 bits for addressing (e.g high 16 bits ignored)
 // can ignore the bottom 12 bits (lg of page)
 // insignificant high bits
-#define PM_NHS 12
+#define PM_NHS 14
 // insignificant low bits
 #define PM_NLS LG_PAGE
 // significant middle bits

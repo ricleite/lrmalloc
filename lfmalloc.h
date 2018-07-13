@@ -81,10 +81,7 @@ struct ProcHeap;
 struct SizeClassData;
 struct TCacheBin;
 
-#define LG_MAX_BLOCK_NUM    22
-// LG_TAG must be (64 - 2 - LG_MAX_BLOCK_NUM * 2)
-// see struct Anchor
-#define LG_TAG              18
+#define LG_MAX_BLOCK_NUM    31
 #define MAX_BLOCK_NUM       (2 << LG_MAX_BLOCK_NUM)
 
 struct Anchor
@@ -92,7 +89,6 @@ struct Anchor
     uint32_t state : 2;
     uint32_t avail : LG_MAX_BLOCK_NUM;
     uint32_t count : LG_MAX_BLOCK_NUM;
-    uint32_t tag : LG_TAG;
 } LFMALLOC_ATTR(packed);
 
 STATIC_ASSERT(sizeof(Anchor) == sizeof(uint64_t), "Invalid anchor size");
