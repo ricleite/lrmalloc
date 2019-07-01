@@ -24,7 +24,7 @@ LD_PRELOAD=lrmalloc.so ./your_application
 ```
 ## Copyright
 
-Licence: MIT
+License: MIT
 
 Read file [COPYING](COPYING).
 

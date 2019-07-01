@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2019 Ricardo Leite. All rights reserved.
+ * Licenced under the MIT licence. See COPYING file in the project root for details.
+ */
 
 #ifndef __DEFINES_H__
 #define __DEFINES_H__
