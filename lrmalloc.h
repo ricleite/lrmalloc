@@ -49,8 +49,7 @@ extern "C"
     size_t lf_malloc_usable_size(void* ptr) noexcept;
     // memory alignment ops
     int lf_posix_memalign(void** memptr, size_t alignment, size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ATTR(nonnull(1))
-        LFMALLOC_ALLOC_SIZE(3) LFMALLOC_CACHE_ALIGNED_FN;
+        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ATTR(nonnull(1));
     void* lf_aligned_alloc(size_t alignment, size_t size) noexcept
         LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(2)
         LFMALLOC_CACHE_ALIGNED_FN;
