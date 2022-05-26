@@ -1,11 +1,13 @@
 /*
  * Copyright (C) 2019 Ricardo Leite. All rights reserved.
- * Licenced under the MIT licence. See COPYING file in the project root for details.
+ * Licenced under the MIT licence. See COPYING file in the project root for
+ * details.
  */
 
 #include "pagemap.h"
-#include "pages.h"
+
 #include "log.h"
+#include "pages.h"
 
 PageMap sPageMap;
 

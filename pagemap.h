@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2019 Ricardo Leite. All rights reserved.
- * Licenced under the MIT licence. See COPYING file in the project root for details.
+ * Licenced under the MIT licence. See COPYING file in the project root for
+ * details.
  */
 
 #ifndef __PAGEMAP_H
@@ -9,8 +10,8 @@
 #include <atomic>
 
 #include "defines.h"
-#include "size_classes.h"
 #include "log.h"
+#include "size_classes.h"
 
 // assuming x86-64, for now
 // which uses 48 bits for addressing (e.g high 16 bits ignored)
@@ -36,8 +37,7 @@ struct Descriptor;
 
 // contains metadata per page
 // *has* to be the size of a single word
-struct PageInfo
-{
+struct PageInfo {
 private:
     // descriptor
     Descriptor* _desc;
@@ -76,8 +76,7 @@ inline size_t PageInfo::GetScIdx() const
 static_assert(sizeof(PageInfo) == sizeof(uint64_t), "Invalid PageInfo size");
 
 // lock free page map
-class PageMap
-{
+class PageMap {
 public:
     // must be called before any GetPageInfo/SetPageInfo calls
     void Init();
@@ -114,4 +113,3 @@ inline void PageMap::SetPageInfo(char* ptr, PageInfo info)
 extern PageMap sPageMap;
 
 #endif // __PAGEMAP_H
-

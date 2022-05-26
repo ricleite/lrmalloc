@@ -1,17 +1,19 @@
 /*
  * Copyright (C) 2019 Ricardo Leite. All rights reserved.
- * Licenced under the MIT licence. See COPYING file in the project root for details.
+ * Licenced under the MIT licence. See COPYING file in the project root for
+ * details.
  */
 
 #ifndef __PAGES_H
 #define __PAGES_H
 
 #include <cinttypes>
+#include <cstddef>
+
 #include "defines.h"
 
 // return page address for page containing a
-#define PAGE_ADDR2BASE(a) \
-    ((void*)((uintptr)(a) & ~PAGE_MASK))
+#define PAGE_ADDR2BASE(a) ((void*)((uintptr)(a) & ~PAGE_MASK))
 
 // returns a set of continous pages, totaling to size bytes
 void* PageAlloc(size_t size);

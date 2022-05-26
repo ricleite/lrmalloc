@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2019 Ricardo Leite. All rights reserved.
- * Licenced under the MIT licence. See COPYING file in the project root for details.
+ * Licenced under the MIT licence. See COPYING file in the project root for
+ * details.
  */
 
 #ifndef __LFMALLOC_H
@@ -30,51 +31,40 @@ void lf_malloc_thread_initialize();
 void lf_malloc_thread_finalize();
 
 // exports
-extern "C"
-{
-    // malloc interface
-    void* lf_malloc(size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(1)
-        LFMALLOC_CACHE_ALIGNED_FN;
-    void lf_free(void* ptr) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW
-        LFMALLOC_CACHE_ALIGNED_FN;
-    void* lf_calloc(size_t n, size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE2(1, 2)
-        LFMALLOC_CACHE_ALIGNED_FN;
-    void* lf_realloc(void* ptr, size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(2)
-        LFMALLOC_CACHE_ALIGNED_FN;
-    // utilities
-    size_t lf_malloc_usable_size(void* ptr) noexcept;
-    // memory alignment ops
-    int lf_posix_memalign(void** memptr, size_t alignment, size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ATTR(nonnull(1));
-    void* lf_aligned_alloc(size_t alignment, size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(2)
-        LFMALLOC_CACHE_ALIGNED_FN;
-    void* lf_valloc(size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(1)
-        LFMALLOC_CACHE_ALIGNED_FN;
-    // obsolete alignment oos
-    void* lf_memalign(size_t alignment, size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(2)
-        LFMALLOC_CACHE_ALIGNED_FN;
-    void* lf_pvalloc(size_t size) noexcept
-        LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_ALLOC_SIZE(1)
-        LFMALLOC_CACHE_ALIGNED_FN;
+extern "C" {
+// malloc interface
+void* lf_malloc(size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+    LFMALLOC_ALLOC_SIZE(1) LFMALLOC_CACHE_ALIGNED_FN;
+void lf_free(void* ptr) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_CACHE_ALIGNED_FN;
+void* lf_calloc(size_t n, size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+    LFMALLOC_ALLOC_SIZE2(1, 2) LFMALLOC_CACHE_ALIGNED_FN;
+void* lf_realloc(void* ptr, size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+    LFMALLOC_ALLOC_SIZE(2) LFMALLOC_CACHE_ALIGNED_FN;
+// utilities
+size_t lf_malloc_usable_size(void* ptr) noexcept;
+// memory alignment ops
+int lf_posix_memalign(void** memptr, size_t alignment, size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+    LFMALLOC_ATTR(nonnull(1));
+void* lf_aligned_alloc(size_t alignment, size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+    LFMALLOC_ALLOC_SIZE(2) LFMALLOC_CACHE_ALIGNED_FN;
+void* lf_valloc(size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+    LFMALLOC_ALLOC_SIZE(1) LFMALLOC_CACHE_ALIGNED_FN;
+// obsolete alignment oos
+void* lf_memalign(size_t alignment, size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+    LFMALLOC_ALLOC_SIZE(2) LFMALLOC_CACHE_ALIGNED_FN;
+void* lf_pvalloc(size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+    LFMALLOC_ALLOC_SIZE(1) LFMALLOC_CACHE_ALIGNED_FN;
 }
 
 // superblock states
 // used in Anchor::state
-enum SuperblockState
-{
+enum SuperblockState {
     // all blocks allocated or reserved
-    SB_FULL     = 0,
+    SB_FULL = 0,
     // has unreserved available blocks
-    SB_PARTIAL  = 1,
+    SB_PARTIAL = 1,
     // all blocks are free
-    SB_EMPTY    = 2,
+    SB_EMPTY = 2,
 };
 
 struct Anchor;
@@ -84,11 +74,10 @@ struct ProcHeap;
 struct SizeClassData;
 struct TCacheBin;
 
-#define LG_MAX_BLOCK_NUM    31
-#define MAX_BLOCK_NUM       (2 << LG_MAX_BLOCK_NUM)
+#define LG_MAX_BLOCK_NUM 31
+#define MAX_BLOCK_NUM (2 << LG_MAX_BLOCK_NUM)
 
-struct Anchor
-{
+struct Anchor {
     uint32_t state : 2;
     uint32_t avail : LG_MAX_BLOCK_NUM;
     uint32_t count : LG_MAX_BLOCK_NUM;
@@ -96,8 +85,7 @@ struct Anchor
 
 STATIC_ASSERT(sizeof(Anchor) == sizeof(uint64_t), "Invalid anchor size");
 
-struct DescriptorNode
-{
+struct DescriptorNode {
 public:
     // ptr
     Descriptor* _desc;
@@ -131,8 +119,7 @@ STATIC_ASSERT(sizeof(DescriptorNode) == sizeof(uint64_t), "Invalid descriptor no
 // Superblock descriptor
 // needs to be cache-line aligned
 // descriptors are allocated and *never* freed
-struct Descriptor
-{
+struct Descriptor {
     // list node pointers
     // used in free descriptor list
     std::atomic<DescriptorNode> nextFree;
@@ -148,8 +135,7 @@ struct Descriptor
 } LFMALLOC_CACHE_ALIGNED;
 
 // at least one ProcHeap instance exists for each sizeclass
-struct ProcHeap
-{
+struct ProcHeap {
 public:
     // ptr to descriptor, head of partial descriptor list
     std::atomic<DescriptorNode> partialList;
@@ -183,4 +169,3 @@ void FillCache(size_t scIdx, TCacheBin* cache);
 void FlushCache(size_t scIdx, TCacheBin* cache);
 
 #endif // __LFMALLOC_H
-

@@ -1,30 +1,31 @@
 /*
  * Copyright (C) 2019 Ricardo Leite. All rights reserved.
- * Licenced under the MIT licence. See COPYING file in the project root for details.
+ * Licenced under the MIT licence. See COPYING file in the project root for
+ * details.
  */
 
-#include <cassert>
-#include <cstring>
 #include <algorithm>
 #include <atomic>
+#include <cassert>
+#include <cstring>
 
 // for ENOMEM
 #include <errno.h>
 
-#include "lrmalloc.h"
-#include "size_classes.h"
-#include "pages.h"
-#include "pagemap.h"
 #include "log.h"
+#include "lrmalloc.h"
+#include "pagemap.h"
+#include "pages.h"
+#include "size_classes.h"
 #include "tcache.h"
 
 // global variables
 // descriptor recycle list
-std::atomic<DescriptorNode> AvailDesc({ nullptr });
+std::atomic<DescriptorNode> sAvailDesc({ nullptr });
 // malloc init state
-bool MallocInit = false;
+bool sMallocInit = false;
 // heaps, one heap per size class
-ProcHeap Heaps[MAX_SZ_IDX];
+ProcHeap sHeaps[MAX_SZ_IDX];
 
 // (un)register descriptor pages with pagemap
 // all pages used by the descriptor will point to desc in
@@ -40,8 +41,7 @@ void UpdatePageMap(ProcHeap* heap, char* ptr, Descriptor* desc, size_t scIdx)
 
     // large allocation, don't need to (un)register every page
     // just first
-    if (!heap)
-    {
+    if (!heap) {
         sPageMap.SetPageInfo(ptr, info);
         return;
     }
@@ -50,13 +50,14 @@ void UpdatePageMap(ProcHeap* heap, char* ptr, Descriptor* desc, size_t scIdx)
     // ASSERT(ptr == superblock);
 
     // small allocation, (un)register every page
-    // could *technically* optimize if blockSize >>> page, 
+    // could *technically* optimize if blockSize >>> page,
     //  but let's not worry about that
     size_t sbSize = heap->GetSizeClass()->sbSize;
     // sbSize is a multiple of page
     ASSERT((sbSize & PAGE_MASK) == 0);
-    for (size_t idx = 0; idx < sbSize; idx += PAGE)
-        sPageMap.SetPageInfo(ptr + idx, info); 
+    for (size_t idx = 0; idx < sbSize; idx += PAGE) {
+        sPageMap.SetPageInfo(ptr + idx, info);
+    }
 }
 
 void RegisterDesc(Descriptor* desc)
@@ -64,8 +65,9 @@ void RegisterDesc(Descriptor* desc)
     ProcHeap* heap = desc->heap;
     char* ptr = desc->superblock;
     size_t scIdx = 0;
-    if (LIKELY(heap != nullptr))
+    if (LIKELY(heap != nullptr)) {
         scIdx = heap->scIdx;
+    }
 
     UpdatePageMap(heap, ptr, desc, scIdx);
 }
@@ -93,25 +95,24 @@ uint32_t ComputeIdx(char* superblock, char* block, size_t scIdx)
 
     ASSERT(block >= superblock);
     ASSERT(block < superblock + sc->sbSize);
-    // optimize integer division by allowing the compiler to create 
+    // optimize integer division by allowing the compiler to create
     //  a jump table using size class index
     // compiler can then optimize integer div due to known divisor
     uint32_t diff = uint32_t(block - superblock);
     uint32_t idx = 0;
-    switch (scIdx)
-    {
-#define SIZE_CLASS_bin_yes(index, blockSize)  \
-        case index:                           \
-            ASSERT(scBlockSize == blockSize); \
-            idx = diff / blockSize;           \
-            break;
+    switch (scIdx) {
+#define SIZE_CLASS_bin_yes(index, blockSize) \
+    case index:                              \
+        ASSERT(scBlockSize == blockSize);    \
+        idx = diff / blockSize;              \
+        break;
 #define SIZE_CLASS_bin_no(index, blockSize)
 #define SC(index, lg_grp, lg_delta, ndelta, psz, bin, pgs, lg_delta_lookup) \
-        SIZE_CLASS_bin_##bin((index + 1), ((1U << lg_grp) + (ndelta << lg_delta)))
+    SIZE_CLASS_bin_##bin((index + 1), ((1U << lg_grp) + (ndelta << lg_delta)))
         SIZE_CLASSES
-        default:
-            ASSERT(false);
-            break;
+    default:
+        ASSERT(false);
+        break;
     }
 #undef SIZE_CLASS_bin_yes
 #undef SIZE_CLASS_bin_no
@@ -131,18 +132,17 @@ Descriptor* ListPopPartial(ProcHeap* heap)
     std::atomic<DescriptorNode>& list = heap->partialList;
     DescriptorNode oldHead = list.load();
     DescriptorNode newHead;
-    do
-    {
+    do {
         Descriptor* oldDesc = oldHead.GetDesc();
-        if (!oldDesc)
+        if (!oldDesc) {
             return nullptr;
+        }
 
         newHead = oldDesc->nextPartial.load();
         Descriptor* desc = newHead.GetDesc();
         uint64_t counter = oldHead.GetCounter();
         newHead.Set(desc, counter);
-    }
-    while (!list.compare_exchange_weak(oldHead, newHead));
+    } while (!list.compare_exchange_weak(oldHead, newHead));
 
     return oldHead.GetDesc();
 }
@@ -154,13 +154,11 @@ void ListPushPartial(Descriptor* desc)
 
     DescriptorNode oldHead = list.load();
     DescriptorNode newHead;
-    do
-    {
+    do {
         newHead.Set(desc, oldHead.GetCounter() + 1);
         ASSERT(oldHead.GetDesc() != newHead.GetDesc());
-        newHead.GetDesc()->nextPartial.store(oldHead); 
-    }
-    while (!list.compare_exchange_weak(oldHead, newHead));
+        newHead.GetDesc()->nextPartial.store(oldHead);
+    } while (!list.compare_exchange_weak(oldHead, newHead));
 }
 
 void HeapPushPartial(Descriptor* desc)
@@ -175,11 +173,12 @@ Descriptor* HeapPopPartial(ProcHeap* heap)
 
 void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum)
 {
-    ProcHeap* heap = &Heaps[scIdx];
+    ProcHeap* heap = &sHeaps[scIdx];
 
     Descriptor* desc = HeapPopPartial(heap);
-    if (!desc)
+    if (!desc) {
         return;
+    }
 
     // reserve block(s)
     Anchor oldAnchor = desc->anchor.load();
@@ -190,10 +189,8 @@ void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum)
 
     // we have "ownership" of block, but anchor can still change
     // due to free()
-    do
-    {
-        if (oldAnchor.state == SB_EMPTY)
-        {
+    do {
+        if (oldAnchor.state == SB_EMPTY) {
             DescRetire(desc);
             // retry
             return MallocFromPartial(scIdx, cache, blockNum);
@@ -211,9 +208,7 @@ void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum)
         // avail value doesn't actually matter
         newAnchor.avail = maxcount;
         newAnchor.state = SB_FULL;
-    }
-    while (!desc->anchor.compare_exchange_weak(
-                oldAnchor, newAnchor));
+    } while (!desc->anchor.compare_exchange_weak(oldAnchor, newAnchor));
 
     // will take as many blocks as available from superblock
     // *AND* no thread can do malloc() using this superblock, we
@@ -237,7 +232,7 @@ void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum)
 
 void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
 {
-    ProcHeap* heap = &Heaps[scIdx];
+    ProcHeap* heap = &sHeaps[scIdx];
     SizeClassData* sc = &SizeClasses[scIdx];
 
     Descriptor* desc = DescAlloc();
@@ -253,8 +248,7 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
 
     // prepare block list
     char* superblock = desc->superblock;
-    for (uint32_t idx = 0; idx < maxcount - 1; ++idx)
-    {
+    for (uint32_t idx = 0; idx < maxcount - 1; ++idx) {
         char* block = superblock + idx * blockSize;
         char* next = superblock + (idx + 1) * blockSize;
         *(char**)block = next;
@@ -287,22 +281,17 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
 
 Descriptor* DescAlloc()
 {
-    DescriptorNode oldHead = AvailDesc.load();
-    while (true)
-    {
+    DescriptorNode oldHead = sAvailDesc.load();
+    while (true) {
         Descriptor* desc = oldHead.GetDesc();
-        if (desc)
-        {
+        if (desc) {
             DescriptorNode newHead = desc->nextFree.load();
             newHead.Set(newHead.GetDesc(), oldHead.GetCounter());
-            if (AvailDesc.compare_exchange_weak(oldHead, newHead))
-            {
+            if (sAvailDesc.compare_exchange_weak(oldHead, newHead)) {
                 ASSERT(desc->blockSize == 0);
                 return desc;
             }
-        }
-        else
-        {
+        } else {
             // allocate several pages
             // get first descriptor, this is returned to caller
             char* ptr = (char*)PageAlloc(DESCRIPTOR_BLOCK_SZ);
@@ -316,12 +305,11 @@ Descriptor* DescAlloc()
                 char* currPtr = ptr + sizeof(Descriptor);
                 currPtr = ALIGN_ADDR(currPtr, CACHELINE);
                 first = (Descriptor*)currPtr;
-                while (currPtr + sizeof(Descriptor) <
-                        ptr + DESCRIPTOR_BLOCK_SZ)
-                {
+                while (currPtr + sizeof(Descriptor) < ptr + DESCRIPTOR_BLOCK_SZ) {
                     Descriptor* curr = (Descriptor*)currPtr;
-                    if (prev)
+                    if (prev) {
                         prev->nextFree.store({ curr });
+                    }
 
                     prev = curr;
                     currPtr = currPtr + sizeof(Descriptor);
@@ -331,14 +319,12 @@ Descriptor* DescAlloc()
                 prev->nextFree.store({ nullptr });
 
                 // add list to available descriptors
-                DescriptorNode oldHead = AvailDesc.load();
+                DescriptorNode oldHead = sAvailDesc.load();
                 DescriptorNode newHead;
-                do
-                {
+                do {
                     prev->nextFree.store(oldHead);
                     newHead.Set(first, oldHead.GetCounter() + 1);
-                }
-                while (!AvailDesc.compare_exchange_weak(oldHead, newHead));
+                } while (!sAvailDesc.compare_exchange_weak(oldHead, newHead));
             }
 
             return ret;
@@ -349,15 +335,13 @@ Descriptor* DescAlloc()
 void DescRetire(Descriptor* desc)
 {
     desc->blockSize = 0;
-    DescriptorNode oldHead = AvailDesc.load();
+    DescriptorNode oldHead = sAvailDesc.load();
     DescriptorNode newHead;
-    do
-    {
+    do {
         desc->nextFree.store(oldHead);
 
         newHead.Set(desc, oldHead.GetCounter() + 1);
-    }
-    while (!AvailDesc.compare_exchange_weak(oldHead, newHead));
+    } while (!sAvailDesc.compare_exchange_weak(oldHead, newHead));
 }
 
 void FillCache(size_t scIdx, TCacheBin* cache)
@@ -367,8 +351,9 @@ void FillCache(size_t scIdx, TCacheBin* cache)
     // use a *SINGLE* partial superblock to try to fill cache
     MallocFromPartial(scIdx, cache, blockNum);
     // if we obtain no blocks from partial superblocks, create a new superblock
-    if (blockNum == 0)
+    if (blockNum == 0) {
         MallocFromNewSB(scIdx, cache, blockNum);
+    }
 
     SizeClassData* sc = &SizeClasses[scIdx];
     (void)sc;
@@ -378,7 +363,7 @@ void FillCache(size_t scIdx, TCacheBin* cache)
 
 void FlushCache(size_t scIdx, TCacheBin* cache)
 {
-    ProcHeap* heap = &Heaps[scIdx];
+    ProcHeap* heap = &sHeaps[scIdx];
     SizeClassData* sc = &SizeClasses[scIdx];
     uint32_t const sbSize = sc->sbSize;
     uint32_t const blockSize = sc->blockSize;
@@ -390,8 +375,7 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
     // @todo: optimize
     // in the normal case, we should be able to return several
     //  blocks with a single CAS
-    while (cache->GetBlockNum() > 0)
-    {
+    while (cache->GetBlockNum() > 0) {
         char* head = cache->PeekBlock();
         char* tail = head;
         PageInfo info = GetPageInfoForPtr(head);
@@ -405,11 +389,11 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
         uint32_t blockCount = 1;
         // check if next cache blocks are in the same superblock
         // same superblock, same descriptor
-        while (cache->GetBlockNum() > blockCount)
-        {
+        while (cache->GetBlockNum() > blockCount) {
             char* ptr = *(char**)tail;
-            if (ptr < superblock || ptr >= superblock + sbSize)
+            if (ptr < superblock || ptr >= superblock + sbSize) {
                 break; // ptr not in superblock
+            }
 
             // ptr in superblock, add to "list"
             ++blockCount;
@@ -423,8 +407,7 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
 
         Anchor oldAnchor = desc->anchor.load();
         Anchor newAnchor;
-        do
-        {
+        do {
             // update anchor.avail
             char* next = (char*)(superblock + oldAnchor.avail * blockSize);
             *(char**)tail = next;
@@ -433,21 +416,19 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
             newAnchor.avail = idx;
             // state updates
             // don't set SB_PARTIAL if state == SB_ACTIVE
-            if (oldAnchor.state == SB_FULL)
+            if (oldAnchor.state == SB_FULL) {
                 newAnchor.state = SB_PARTIAL;
+            }
             // this can't happen with SB_ACTIVE
             // because of reserved blocks
             ASSERT(oldAnchor.count < desc->maxcount);
-            if (oldAnchor.count + blockCount == desc->maxcount)
-            {
+            if (oldAnchor.count + blockCount == desc->maxcount) {
                 newAnchor.count = desc->maxcount - 1;
                 newAnchor.state = SB_EMPTY; // can free superblock
-            }
-            else
+            } else {
                 newAnchor.count += blockCount;
-        }
-        while (!desc->anchor.compare_exchange_weak(
-                    oldAnchor, newAnchor));
+            }
+        } while (!desc->anchor.compare_exchange_weak(oldAnchor, newAnchor));
 
         // after last CAS, can't reliably read any desc fields
         // as desc might have become empty and been concurrently reused
@@ -456,16 +437,15 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
         ASSERT(newAnchor.count < maxcount);
 
         // CAS success, can free block
-        if (newAnchor.state == SB_EMPTY)
-        {
+        if (newAnchor.state == SB_EMPTY) {
             // unregister descriptor
             UnregisterDesc(heap, superblock);
 
             // free superblock
             PageFree(superblock, heap->GetSizeClass()->sbSize);
-        }
-        else if (oldAnchor.state == SB_FULL)
+        } else if (oldAnchor.state == SB_FULL) {
             HeapPushPartial(desc);
+        }
     }
 }
 
@@ -474,7 +454,7 @@ void InitMalloc()
     LOG_DEBUG();
 
     // hard assumption that this can't be called concurrently
-    MallocInit = true;
+    sMallocInit = true;
 
     // init size classes
     InitSizeClass();
@@ -483,9 +463,8 @@ void InitMalloc()
     sPageMap.Init();
 
     // init heaps
-    for (size_t idx = 0; idx < MAX_SZ_IDX; ++idx)
-    {
-        ProcHeap& heap = Heaps[idx];
+    for (size_t idx = 0; idx < MAX_SZ_IDX; ++idx) {
+        ProcHeap& heap = sHeaps[idx];
         heap.partialList.store({ nullptr });
         heap.scIdx = idx;
     }
@@ -495,12 +474,12 @@ LFMALLOC_INLINE
 void* do_malloc(size_t size)
 {
     // ensure malloc is initialized
-    if (UNLIKELY(!MallocInit))
+    if (UNLIKELY(!sMallocInit)) {
         InitMalloc();
+    }
 
     // large block allocation
-    if (UNLIKELY(size > MAX_SZ))
-    {
+    if (UNLIKELY(size > MAX_SZ)) {
         size_t pages = PAGE_CEILING(size);
         Descriptor* desc = DescAlloc();
         ASSERT(desc);
@@ -529,8 +508,9 @@ void* do_malloc(size_t size)
 
     TCacheBin* cache = &TCache[scIdx];
     // fill cache if needed
-    if (UNLIKELY(cache->GetBlockNum() == 0))
+    if (UNLIKELY(cache->GetBlockNum() == 0)) {
         FillCache(scIdx, cache);
+    }
 
     return cache->PopBlock();
 }
@@ -545,8 +525,9 @@ bool isPowerOfTwo(size_t x)
 LFMALLOC_INLINE
 void* do_aligned_alloc(size_t alignment, size_t size)
 {
-    if (UNLIKELY(!isPowerOfTwo(alignment)))
+    if (UNLIKELY(!isPowerOfTwo(alignment))) {
         return nullptr;
+    }
 
     size = ALIGN_VAL(size, alignment);
 
@@ -554,28 +535,30 @@ void* do_aligned_alloc(size_t alignment, size_t size)
 
     // @todo: almost equal logic to do_malloc, DRY
     // ensure malloc is initialized
-    if (UNLIKELY(!MallocInit))
+    if (UNLIKELY(!sMallocInit)) {
         InitMalloc();
+    }
 
     // allocations smaller than PAGE will be correctly aligned
-    // this is because size >= alignment, and size will map to a small class size
-    //  with the formula 2^X + A*2^(X-1) + C*2^(X-2)
-    // since size is a multiple of alignment, the lowest size class power of two
-    //  is already >= alignment
+    // this is because size >= alignment, and size will map to a small class
+    // size with the formula 2^X + A*2^(X-1) + C*2^(X-2)
+    // since size is a multiple of alignment, the lowest size class power of
+    // two is already >= alignment
     // this does not work if allocation > PAGE even if it's a small class size,
-    //  because superblock for those allocations is only guaranteed
-    //  to be page aligned
+    // because the superblock for those allocations is only guaranteed
+    // to be page aligned
     // force such allocations to become large block allocs
-    if (UNLIKELY(size > PAGE))
-    {
+    if (UNLIKELY(size > PAGE)) {
         // hotfix solution for this case is to force allocation to be large
         size = std::max<size_t>(size, MAX_SZ + 1);
 
         // large blocks are page-aligned
-        // if user asks for a diabolical alignment, need more pages to fulfil it
+        // if user asks for a diabolical alignment, need more pages to
+        // fulfil it
         bool const needsMorePages = (alignment > PAGE);
-        if (UNLIKELY(needsMorePages))
+        if (UNLIKELY(needsMorePages)) {
             size += alignment;
+        }
 
         size_t pages = PAGE_CEILING(size);
         Descriptor* desc = DescAlloc();
@@ -597,14 +580,14 @@ void* do_aligned_alloc(size_t alignment, size_t size)
 
         RegisterDesc(desc);
 
-        if (UNLIKELY(needsMorePages))
-        {
+        if (UNLIKELY(needsMorePages)) {
             ptr = ALIGN_ADDR(ptr, alignment);
             // aligned block must fit into allocated pages
             ASSERT((ptr + size) <= (desc->superblock + desc->blockSize));
 
             // need to update page so that descriptors can be found
-            //  for large allocations aligned to "middle" of superblocks
+            //  for large allocations aligned to "middle" of
+            //  superblocks
             UpdatePageMap(nullptr, ptr, desc, 0L);
         }
 
@@ -619,8 +602,9 @@ void* do_aligned_alloc(size_t alignment, size_t size)
 
     TCacheBin* cache = &TCache[scIdx];
     // fill cache if needed
-    if (UNLIKELY(cache->GetBlockNum() == 0))
+    if (UNLIKELY(cache->GetBlockNum() == 0)) {
         FillCache(scIdx, cache);
+    }
 
     return cache->PopBlock();
 }
@@ -635,19 +619,19 @@ void do_free(void* ptr)
     ASSERT(desc);
 
     size_t scIdx = info.GetScIdx();
- 
+
     LOG_DEBUG("Heap %p, Desc %p, ptr %p", heap, desc, ptr);
 
     // large allocation case
-    if (UNLIKELY(!scIdx))
-    {
+    if (UNLIKELY(!scIdx)) {
         char* superblock = desc->superblock;
 
         // unregister descriptor
         UnregisterDesc(nullptr, superblock);
         // aligned large allocation case
-        if (UNLIKELY((char*)ptr != superblock))
+        if (UNLIKELY((char*)ptr != superblock)) {
             UnregisterDesc(nullptr, (char*)ptr);
+        }
 
         // free superblock
         PageFree(superblock, desc->blockSize);
@@ -662,62 +646,68 @@ void do_free(void* ptr)
     SizeClassData* sc = &SizeClasses[scIdx];
 
     // flush cache if need
-    if (UNLIKELY(cache->GetBlockNum() >= sc->cacheBlockNum))
+    if (UNLIKELY(cache->GetBlockNum() >= sc->cacheBlockNum)) {
         FlushCache(scIdx, cache);
+    }
 
     cache->PushBlock((char*)ptr);
 }
 
-void lf_malloc_initialize() { }
+void lf_malloc_initialize()
+{
+}
 
-void lf_malloc_finalize() { }
+void lf_malloc_finalize()
+{
+}
 
-void lf_malloc_thread_initialize() { }
+void lf_malloc_thread_initialize()
+{
+}
 
 void lf_malloc_thread_finalize()
 {
     // flush caches
-    for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx)
+    for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx) {
         FlushCache(scIdx, &TCache[scIdx]);
+    }
 }
 
-extern "C"
-void* lf_malloc(size_t size) noexcept
+extern "C" void* lf_malloc(size_t size) noexcept
 {
     LOG_DEBUG("size: %lu", size);
 
     return do_malloc(size);
 }
 
-extern "C"
-void* lf_calloc(size_t n, size_t size) noexcept
+extern "C" void* lf_calloc(size_t n, size_t size) noexcept
 {
     LOG_DEBUG();
     size_t allocSize = n * size;
     // overflow check
     // @todo: expensive, need to optimize
-    if (UNLIKELY(n == 0 || allocSize / n != size))
+    if (UNLIKELY(n == 0 || allocSize / n != size)) {
         return nullptr;
+    }
 
     void* ptr = do_malloc(allocSize);
 
     // calloc returns zero-filled memory
-    // @todo: optimize, memory may be already zero-filled 
+    // @todo: optimize, memory may be already zero-filled
     //  if coming directly from OS
-    if (LIKELY(ptr != nullptr))
+    if (LIKELY(ptr != nullptr)) {
         memset(ptr, 0x0, allocSize);
+    }
 
     return ptr;
 }
 
-extern "C"
-void* lf_realloc(void* ptr, size_t size) noexcept
+extern "C" void* lf_realloc(void* ptr, size_t size) noexcept
 {
     LOG_DEBUG();
 
     size_t blockSize = 0;
-    if (LIKELY(ptr != nullptr))
-    {
+    if (LIKELY(ptr != nullptr)) {
         PageInfo info = GetPageInfoForPtr(ptr);
         Descriptor* desc = info.GetDesc();
         ASSERT(desc);
@@ -725,8 +715,7 @@ void* lf_realloc(void* ptr, size_t size) noexcept
         blockSize = desc->blockSize;
 
         // realloc with size == 0 is the same as free(ptr)
-        if (UNLIKELY(size == 0))
-        {
+        if (UNLIKELY(size == 0)) {
             do_free(ptr);
             return nullptr;
         }
@@ -737,8 +726,7 @@ void* lf_realloc(void* ptr, size_t size) noexcept
     }
 
     void* newPtr = do_malloc(size);
-    if (LIKELY(ptr && newPtr))
-    {
+    if (LIKELY(ptr && newPtr)) {
         memcpy(newPtr, ptr, blockSize);
         do_free(ptr);
     }
@@ -746,8 +734,7 @@ void* lf_realloc(void* ptr, size_t size) noexcept
     return newPtr;
 }
 
-extern "C"
-size_t lf_malloc_usable_size(void* ptr) noexcept
+extern "C" size_t lf_malloc_usable_size(void* ptr) noexcept
 {
     LOG_DEBUG();
     if (UNLIKELY(ptr == nullptr))
@@ -757,8 +744,7 @@ size_t lf_malloc_usable_size(void* ptr) noexcept
 
     size_t scIdx = info.GetScIdx();
     // large allocation case
-    if (UNLIKELY(!scIdx))
-    {
+    if (UNLIKELY(!scIdx)) {
         Descriptor* desc = info.GetDesc();
         ASSERT(desc);
         return desc->blockSize;
@@ -768,62 +754,56 @@ size_t lf_malloc_usable_size(void* ptr) noexcept
     return sc->blockSize;
 }
 
-extern "C"
-int lf_posix_memalign(void** memptr, size_t alignment, size_t size) noexcept
+extern "C" int lf_posix_memalign(void** memptr, size_t alignment, size_t size) noexcept
 {
     LOG_DEBUG();
 
     // "EINVAL - The alignment argument was not a power of two, or
     //  was not a multiple of sizeof(void *)"
-    if (UNLIKELY(!isPowerOfTwo(alignment) || (alignment & PTR_MASK)))
+    if (UNLIKELY(!isPowerOfTwo(alignment) || (alignment & PTR_MASK))) {
         return EINVAL;
+    }
 
     void* ptr = do_aligned_alloc(alignment, size);
-    if (UNLIKELY(ptr == nullptr))
+    if (UNLIKELY(ptr == nullptr)) {
         return ENOMEM;
+    }
 
     ASSERT(memptr);
-    *memptr = ptr; 
+    *memptr = ptr;
     return 0;
 }
 
-extern "C"
-void* lf_aligned_alloc(size_t alignment, size_t size) noexcept
+extern "C" void* lf_aligned_alloc(size_t alignment, size_t size) noexcept
 {
     LOG_DEBUG();
     return do_aligned_alloc(alignment, size);
 }
 
-extern "C"
-void* lf_valloc(size_t size) noexcept
+extern "C" void* lf_valloc(size_t size) noexcept
 {
     LOG_DEBUG();
     return do_aligned_alloc(PAGE, size);
 }
 
-extern "C"
-void* lf_memalign(size_t alignment, size_t size) noexcept
+extern "C" void* lf_memalign(size_t alignment, size_t size) noexcept
 {
     LOG_DEBUG();
     return do_aligned_alloc(alignment, size);
 }
 
-extern "C"
-void* lf_pvalloc(size_t size) noexcept
+extern "C" void* lf_pvalloc(size_t size) noexcept
 {
     LOG_DEBUG();
     return do_aligned_alloc(PAGE, size);
 }
 
-extern "C"
-void lf_free(void* ptr) noexcept
+extern "C" void lf_free(void* ptr) noexcept
 {
     LOG_DEBUG("ptr: %p", ptr);
-    if (UNLIKELY(!ptr))
+    if (UNLIKELY(!ptr)) {
         return;
+    }
 
     do_free(ptr);
 }
-
-
-

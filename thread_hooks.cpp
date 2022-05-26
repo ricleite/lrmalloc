@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2019 Ricardo Leite. All rights reserved.
- * Licenced under the MIT licence. See COPYING file in the project root for details.
+ * Licenced under the MIT licence. See COPYING file in the project root for
+ * details.
  */
 
 #include <dlfcn.h>
@@ -21,8 +22,7 @@ void thread_finalizer(void* argptr);
 LFMALLOC_ATTR(constructor)
 void initializer()
 {
-    if (!is_initialized)
-    {
+    if (!is_initialized) {
         is_initialized = true;
         pthread_key_create(&destructor_key, thread_finalizer);
     }
@@ -61,17 +61,12 @@ void thread_finalizer(void* value)
     lf_malloc_thread_finalize();
 }
 
-int pthread_create(pthread_t* thread,
-                   pthread_attr_t const* attr,
-                   void* (start_routine)(void*),
-                   void* arg)
+int pthread_create(pthread_t* thread, pthread_attr_t const* attr, void*(start_routine)(void*), void* arg)
 {
-    static int (*pthread_create_fn)(pthread_t*,
-                                    pthread_attr_t const*,
-                                    void* (void*),
-                                    void*) = NULL;
-    if (pthread_create_fn == NULL)
-        pthread_create_fn = (int(*)(pthread_t*, pthread_attr_t const*, void* (void*), void*))dlsym(RTLD_NEXT, "pthread_create");
+    static int (*pthread_create_fn)(pthread_t*, pthread_attr_t const*, void*(void*), void*) = NULL;
+    if (pthread_create_fn == NULL) {
+        pthread_create_fn = (int (*)(pthread_t*, pthread_attr_t const*, void*(void*), void*))dlsym(RTLD_NEXT, "pthread_create");
+    }
 
     // @todo: don't want to use malloc here
     // instead using a ringbuffer, which has limited storage
@@ -85,4 +80,3 @@ int pthread_create(pthread_t* thread,
     starter_arg->real_arg = arg;
     return pthread_create_fn(thread, attr, thread_initializer, starter_arg);
 }
-

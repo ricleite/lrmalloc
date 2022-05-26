@@ -1,17 +1,17 @@
 /*
  * Copyright (C) 2019 Ricardo Leite. All rights reserved.
- * Licenced under the MIT licence. See COPYING file in the project root for details.
+ * Licenced under the MIT licence. See COPYING file in the project root for
+ * details.
  */
 
 #ifndef __TCACHE_H_
 #define __TCACHE_H_
 
 #include "defines.h"
-#include "size_classes.h"
 #include "log.h"
+#include "size_classes.h"
 
-struct TCacheBin
-{
+struct TCacheBin {
 private:
     char* _block = nullptr;
     uint32_t _blockNum = 0;
@@ -71,8 +71,6 @@ inline void TCacheBin::PopList(char* block, uint32_t length)
 }
 
 // use tls init exec model
-extern __thread TCacheBin TCache[MAX_SZ_IDX]
-    LFMALLOC_TLS_INIT_EXEC LFMALLOC_CACHE_ALIGNED;
+extern __thread TCacheBin TCache[MAX_SZ_IDX] LFMALLOC_TLS_INIT_EXEC LFMALLOC_CACHE_ALIGNED;
 
 #endif // __TCACHE_H_
-
