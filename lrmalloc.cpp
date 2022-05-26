@@ -617,7 +617,7 @@ void do_free(void* ptr)
 
     size_t scIdx = info.GetScIdx();
 
-    LOG_DEBUG("Heap %p, Desc %p, ptr %p", heap, desc, ptr);
+    LOG_DEBUG("Heap %p, Desc %p, ptr %p", desc->heap, desc, ptr);
 
     // large allocation case
     if (UNLIKELY(!scIdx)) {
@@ -766,7 +766,7 @@ extern "C" int lf_posix_memalign(void** memptr, size_t alignment, size_t size) n
         return ENOMEM;
     }
 
-    ASSERT(memptr);
+    ASSERT(memptr != nullptr);
     *memptr = ptr;
     return 0;
 }

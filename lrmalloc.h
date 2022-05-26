@@ -58,7 +58,7 @@ void* lf_pvalloc(size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
 
 // superblock states
 // used in Anchor::state
-enum SuperblockState {
+enum SuperblockState : uint8_t {
     // all blocks allocated or reserved
     SB_FULL = 0,
     // has unreserved available blocks
@@ -75,10 +75,10 @@ struct SizeClassData;
 struct TCacheBin;
 
 #define LG_MAX_BLOCK_NUM 31
-#define MAX_BLOCK_NUM (2 << LG_MAX_BLOCK_NUM)
+#define MAX_BLOCK_NUM (2ul << LG_MAX_BLOCK_NUM)
 
 struct Anchor {
-    uint32_t state : 2;
+    SuperblockState state : 2;
     uint32_t avail : LG_MAX_BLOCK_NUM;
     uint32_t count : LG_MAX_BLOCK_NUM;
 } LFMALLOC_ATTR(packed);
