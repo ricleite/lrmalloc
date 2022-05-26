@@ -275,6 +275,7 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     anchor.avail = maxcount;
     anchor.count = 0;
     anchor.state = SB_FULL;
+    anchor.persistent = false;
 
     desc->anchor.store(anchor);
 
@@ -433,7 +434,7 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
             }
 
             ASSERT(oldAnchor.count < desc->maxcount);
-            if (oldAnchor.count + blockCount == desc->maxcount) {
+            if (oldAnchor.count + blockCount == desc->maxcount and !oldAnchor.persistent) {
                 newAnchor.count = desc->maxcount - 1;
                 newAnchor.state = SB_EMPTY; // can free superblock
             } else {
@@ -445,7 +446,7 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
         // as desc might have become empty and been concurrently reused
         ASSERT(oldAnchor.avail < maxcount || oldAnchor.state == SB_FULL);
         ASSERT(newAnchor.avail < maxcount);
-        ASSERT(newAnchor.count < maxcount);
+        ASSERT(newAnchor.count < maxcount || newAnchor.persistent);
 
         // CAS success, can free block
         if (newAnchor.state == SB_EMPTY) {
@@ -504,6 +505,7 @@ void* do_malloc(size_t size)
         anchor.avail = 0;
         anchor.count = 0;
         anchor.state = SB_FULL;
+        anchor.persistent = false;
 
         desc->anchor.store(anchor);
 
@@ -586,6 +588,7 @@ void* do_aligned_alloc(size_t alignment, size_t size)
         anchor.avail = 0;
         anchor.count = 0;
         anchor.state = SB_FULL;
+        anchor.persistent = false;
 
         desc->anchor.store(anchor);
 
@@ -712,8 +715,9 @@ extern "C" void* lf_realloc(void* ptr, size_t size) noexcept
         }
 
         // nothing to do, block is already large enough
-        if (UNLIKELY(size <= blockSize))
+        if (UNLIKELY(size <= blockSize)) {
             return ptr;
+        }
     }
 
     void* newPtr = do_malloc(size);
@@ -743,6 +747,33 @@ extern "C" size_t lf_malloc_usable_size(void* ptr) noexcept
 
     SizeClassData* sc = &SizeClasses[scIdx];
     return sc->blockSize;
+}
+
+extern "C" void* lf_palloc(size_t size) noexcept
+{
+    LOG_DEBUG("persistent, size: %lu", size);
+
+    // @todo: implement
+    if (UNLIKELY(size > MAX_SZ)) {
+        return nullptr;
+    }
+
+    void* ptr = do_malloc(size);
+
+    // persistent allocations remain mapped in memory forever, such that the application
+    // can freely do read-after-free without danger of SIGSEGV
+    // so tag the descriptor/superblock such that it can never be freed back to the OS
+    PageInfo info = GetPageInfoForPtr(ptr);
+    Descriptor* desc = info.GetDesc();
+
+    Anchor newAnchor;
+    Anchor oldAnchor = desc->anchor.load();
+    do {
+        newAnchor = oldAnchor;
+        newAnchor.persistent = true;
+    } while (!desc->anchor.compare_exchange_weak(oldAnchor, newAnchor));
+
+    return ptr;
 }
 
 extern "C" int lf_posix_memalign(void** memptr, size_t alignment, size_t size) noexcept

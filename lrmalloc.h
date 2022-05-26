@@ -95,6 +95,9 @@ void* lf_realloc(void* ptr, size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ALLOC_SIZE(2) LFMALLOC_CACHE_ALIGNED_FN;
 // utilities
 size_t lf_malloc_usable_size(void* ptr);
+// palloc stands for "persistent allocation"
+void* lf_palloc(size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+    LFMALLOC_ALLOC_SIZE(1) LFMALLOC_CACHE_ALIGNED_FN;
 // memory alignment ops
 int lf_posix_memalign(void** memptr, size_t alignment, size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ATTR(nonnull(1));

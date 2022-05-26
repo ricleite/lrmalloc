@@ -30,12 +30,18 @@ struct ProcHeap;
 struct SizeClassData;
 struct TCacheBin;
 
-#define LG_MAX_BLOCK_NUM 31
+#define LG_MAX_BLOCK_NUM 30
 #define MAX_BLOCK_NUM (2ul << LG_MAX_BLOCK_NUM)
 
 struct Anchor {
     SuperblockState state : 2;
+    // whether the descriptor is for a superblock that contains a persistent allocation
+    // persistent allocations remain mapped in memory forever, such that the application
+    // can freely do read-after-free without danger of SIGSEGV
+    bool persistent : 2;
+    // index to a free block
     uint32_t avail : LG_MAX_BLOCK_NUM;
+    // number of free blocks
     uint32_t count : LG_MAX_BLOCK_NUM;
 } LFMALLOC_ATTR(packed);
 
@@ -89,6 +95,9 @@ struct Descriptor {
     uint32_t blockSize; // block size
     uint32_t maxcount;
 } LFMALLOC_CACHE_ALIGNED;
+
+// fit descriptors inside the cache-line, as they are aligned as well
+STATIC_ASSERT(sizeof(Descriptor) <= CACHELINE, "Invalid descriptor size, bigger than a cache-line");
 
 // at least one ProcHeap instance exists for each sizeclass
 struct ProcHeap {
