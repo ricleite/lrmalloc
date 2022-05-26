@@ -200,7 +200,6 @@ void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum)
         // can't be SB_FULL because we *own* the block now
         // and it came from HeapPopPartial
         // can't be SB_EMPTY, we already checked
-        // obviously can't be SB_ACTIVE
         ASSERT(oldAnchor.state == SB_PARTIAL);
 
         newAnchor = oldAnchor;
@@ -415,12 +414,10 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
             newAnchor = oldAnchor;
             newAnchor.avail = idx;
             // state updates
-            // don't set SB_PARTIAL if state == SB_ACTIVE
             if (oldAnchor.state == SB_FULL) {
                 newAnchor.state = SB_PARTIAL;
             }
-            // this can't happen with SB_ACTIVE
-            // because of reserved blocks
+
             ASSERT(oldAnchor.count < desc->maxcount);
             if (oldAnchor.count + blockCount == desc->maxcount) {
                 newAnchor.count = desc->maxcount - 1;
