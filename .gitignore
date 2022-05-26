@@ -4,3 +4,4 @@ sc/
 *.o
 *.swp
 *.vscode
+*.test

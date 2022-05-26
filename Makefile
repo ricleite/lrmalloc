@@ -17,6 +17,8 @@ OBJFILES=lrmalloc.o size_classes.o pages.o pagemap.o tcache.o thread_hooks.o
 
 default: lrmalloc.so lrmalloc.a
 
+test: all_tests
+
 %.o : %.cpp
 	$(CCX) $(CXXFLAGS) -c -o $@ $< $(LDFLAGS)
 
@@ -26,5 +28,10 @@ lrmalloc.so: $(OBJFILES)
 lrmalloc.a: $(OBJFILES)
 	ar rcs lrmalloc.a $(OBJFILES)
 
+all_tests: default basic.test
+
+%.test : test/%.cpp
+	$(CCX) $(DFLAGS) -o $@ $< lrmalloc.a $(LDFLAGS)
+
 clean:
-	rm -f *.so *.o *.a
+	rm -f *.so *.o *.a *.test
