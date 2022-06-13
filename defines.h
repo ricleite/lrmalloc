@@ -9,8 +9,6 @@
 
 #include <cinttypes>
 
-// a ptr is sizeof(void*) bytes
-#define LG_PTR sizeof(void*)
 // a cache line is 64 bytes
 #define LG_CACHELINE 6
 // a page is 4KB
@@ -18,7 +16,8 @@
 // a huge page is 2MB
 #define LG_HUGEPAGE 21
 
-#define PTR_SZ ((size_t)(1U << LG_PTR))
+// a ptr is sizeof(void*) bytes
+#define PTR_SZ sizeof(void*)
 #define CACHELINE ((size_t)(1U << LG_CACHELINE))
 #define PAGE ((size_t)(1U << LG_PAGE))
 #define HUGEPAGE ((size_t)(1U << LG_HUGEPAGE))
