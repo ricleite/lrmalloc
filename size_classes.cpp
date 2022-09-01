@@ -8,7 +8,6 @@
 
 #include "defines.h"
 #include "log.h"
-#include "lrmalloc.h"
 
 #define SIZE_CLASS_bin_yes(blockSize, pages) { blockSize, pages * PAGE },
 #define SIZE_CLASS_bin_no(blockSize, pages)
