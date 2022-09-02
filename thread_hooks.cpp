@@ -19,6 +19,28 @@ void finalizer();
 void* thread_initializer(void* argptr);
 void thread_finalizer(void* argptr);
 
+// called on process init/exit
+void lf_malloc_initialize()
+{
+}
+
+void lf_malloc_finalize()
+{
+}
+
+// called on thread enter/exit
+void lf_malloc_thread_initialize()
+{
+}
+
+void lf_malloc_thread_finalize()
+{
+    // flush caches
+    for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx) {
+        FlushCache(scIdx, &TCache[scIdx]);
+    }
+}
+
 LFMALLOC_ATTR(constructor)
 void initializer()
 {

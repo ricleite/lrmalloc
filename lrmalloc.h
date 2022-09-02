@@ -23,13 +23,6 @@
 #define lf_memalign memalign
 #define lf_pvalloc pvalloc
 
-// called on process init/exit
-void lf_malloc_initialize();
-void lf_malloc_finalize();
-// called on thread enter/exit
-void lf_malloc_thread_initialize();
-void lf_malloc_thread_finalize();
-
 // exports
 extern "C" {
 // malloc interface

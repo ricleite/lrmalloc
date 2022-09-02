@@ -650,26 +650,6 @@ void do_free(void* ptr)
     cache->PushBlock((char*)ptr);
 }
 
-void lf_malloc_initialize()
-{
-}
-
-void lf_malloc_finalize()
-{
-}
-
-void lf_malloc_thread_initialize()
-{
-}
-
-void lf_malloc_thread_finalize()
-{
-    // flush caches
-    for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx) {
-        FlushCache(scIdx, &TCache[scIdx]);
-    }
-}
-
 extern "C" void* lf_malloc(size_t size) noexcept
 {
     LOG_DEBUG("size: %lu", size);
