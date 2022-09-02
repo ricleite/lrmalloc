@@ -4,11 +4,12 @@
  * details.
  */
 
+#include <atomic>
 #include <dlfcn.h>
 #include <pthread.h>
 
 #include "defines.h"
-#include "lrmalloc.h"
+#include "size_classes.h"
 #include "tcache.h"
 
 // handle process init/exit hooks
