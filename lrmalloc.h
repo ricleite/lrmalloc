@@ -158,7 +158,4 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum);
 Descriptor* DescAlloc();
 void DescRetire(Descriptor* desc);
 
-void FillCache(size_t scIdx, TCacheBin* cache);
-void FlushCache(size_t scIdx, TCacheBin* cache);
-
 #endif // __LFMALLOC_H

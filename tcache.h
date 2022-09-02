@@ -73,4 +73,7 @@ inline void TCacheBin::PopList(char* block, uint32_t length)
 // use tls init exec model
 extern __thread TCacheBin TCache[MAX_SZ_IDX] LFMALLOC_TLS_INIT_EXEC LFMALLOC_CACHE_ALIGNED;
 
+void FillCache(size_t scIdx, TCacheBin* cache);
+void FlushCache(size_t scIdx, TCacheBin* cache);
+
 #endif // __TCACHE_H_

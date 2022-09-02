@@ -9,6 +9,7 @@
 
 #include "defines.h"
 #include "lrmalloc.h"
+#include "tcache.h"
 
 // handle process init/exit hooks
 pthread_key_t destructor_key;
