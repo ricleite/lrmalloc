@@ -3,6 +3,8 @@
 # Licenced under the MIT licence. See COPYING file in the project root for details.
 #
 
+PREFIX?=/usr/local
+
 CCX=g++
 DFLAGS=-ggdb -g -fno-omit-frame-pointer
 CXXFLAGS=-shared -fPIC -std=gnu++14 -O2 -Wall $(DFLAGS) \
@@ -14,10 +16,6 @@ CXXFLAGS=-shared -fPIC -std=gnu++14 -O2 -Wall $(DFLAGS) \
 LDFLAGS=-ldl -pthread
 
 OBJFILES=lrmalloc.o size_classes.o pages.o pagemap.o tcache.o thread_hooks.o
-
-ifeq ($(PREFIX),)
-    PREFIX := /usr/local
-endif
 
 default: liblrmalloc.so liblrmalloc.a
 
