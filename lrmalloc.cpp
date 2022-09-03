@@ -14,10 +14,23 @@
 
 #include "log.h"
 #include "lrmalloc.h"
+#include "lrmalloc_internal.h"
 #include "pagemap.h"
 #include "pages.h"
 #include "size_classes.h"
 #include "tcache.h"
+
+// global variables
+// descriptor recycle list
+extern std::atomic<DescriptorNode> AvailDesc;
+
+// helper fns
+void HeapPushPartial(Descriptor* desc);
+Descriptor* HeapPopPartial(ProcHeap* heap);
+void MallocFromPartial(size_t scIdx, TCacheBin* cache, size_t& blockNum);
+void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum);
+Descriptor* DescAlloc();
+void DescRetire(Descriptor* desc);
 
 // global variables
 // descriptor recycle list
@@ -26,6 +39,7 @@ std::atomic<DescriptorNode> sAvailDesc({ nullptr });
 bool sMallocInit = false;
 // heaps, one heap per size class
 ProcHeap sHeaps[MAX_SZ_IDX];
+
 
 // (un)register descriptor pages with pagemap
 // all pages used by the descriptor will point to desc in
