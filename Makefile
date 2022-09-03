@@ -15,18 +15,22 @@ LDFLAGS=-ldl -pthread
 
 OBJFILES=lrmalloc.o size_classes.o pages.o pagemap.o tcache.o thread_hooks.o
 
-default: lrmalloc.so lrmalloc.a
+ifeq ($(PREFIX),)
+    PREFIX := /usr/local
+endif
+
+default: liblrmalloc.so liblrmalloc.a
 
 test: all_tests
 
 %.o : %.cpp
 	$(CCX) $(CXXFLAGS) -c -o $@ $< $(LDFLAGS)
 
-lrmalloc.so: $(OBJFILES)
-	$(CCX) $(CXXFLAGS) -o lrmalloc.so $(OBJFILES) $(LDFLAGS)
+liblrmalloc.so: $(OBJFILES)
+	$(CCX) $(CXXFLAGS) -o liblrmalloc.so $(OBJFILES) $(LDFLAGS)
 
-lrmalloc.a: $(OBJFILES)
-	ar rcs lrmalloc.a $(OBJFILES)
+liblrmalloc.a: $(OBJFILES)
+	ar rcs liblrmalloc.a $(OBJFILES)
 
 all_tests: default basic.test
 
@@ -35,3 +39,10 @@ all_tests: default basic.test
 
 clean:
 	rm -f *.so *.o *.a *.test
+
+install: default
+	install -d $(DESTDIR)$(PREFIX)/lib/
+	install -m 644 liblrmalloc.so $(DESTDIR)$(PREFIX)/lib/
+	install -m 644 liblrmalloc.a $(DESTDIR)$(PREFIX)/lib/
+	install -d $(DESTDIR)$(PREFIX)/include/
+	install -m 644 lrmalloc.h $(DESTDIR)$(PREFIX)/include/
