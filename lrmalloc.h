@@ -82,7 +82,9 @@
 #define lf_pvalloc pvalloc
 
 // exports
+#ifdef __cplusplus
 extern "C" {
+#endif
 // malloc interface
 void* lf_malloc(size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ALLOC_SIZE(1) LFMALLOC_CACHE_ALIGNED_FN;
@@ -105,6 +107,8 @@ void* lf_memalign(size_t alignment, size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHRO
     LFMALLOC_ALLOC_SIZE(2) LFMALLOC_CACHE_ALIGNED_FN;
 void* lf_pvalloc(size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ALLOC_SIZE(1) LFMALLOC_CACHE_ALIGNED_FN;
+#ifdef __cplusplus
 }
+#endif
 
 #endif // __LFMALLOC_H
