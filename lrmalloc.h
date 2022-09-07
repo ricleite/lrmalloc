@@ -23,26 +23,26 @@
 // exports
 extern "C" {
 // malloc interface
-void* lf_malloc(size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+void* lf_malloc(size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ALLOC_SIZE(1) LFMALLOC_CACHE_ALIGNED_FN;
-void lf_free(void* ptr) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_CACHE_ALIGNED_FN;
-void* lf_calloc(size_t n, size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+void lf_free(void* ptr) LFMALLOC_EXPORT LFMALLOC_NOTHROW LFMALLOC_CACHE_ALIGNED_FN;
+void* lf_calloc(size_t n, size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ALLOC_SIZE2(1, 2) LFMALLOC_CACHE_ALIGNED_FN;
-void* lf_realloc(void* ptr, size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+void* lf_realloc(void* ptr, size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ALLOC_SIZE(2) LFMALLOC_CACHE_ALIGNED_FN;
 // utilities
-size_t lf_malloc_usable_size(void* ptr) noexcept;
+size_t lf_malloc_usable_size(void* ptr);
 // memory alignment ops
-int lf_posix_memalign(void** memptr, size_t alignment, size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+int lf_posix_memalign(void** memptr, size_t alignment, size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ATTR(nonnull(1));
-void* lf_aligned_alloc(size_t alignment, size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+void* lf_aligned_alloc(size_t alignment, size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ALLOC_SIZE(2) LFMALLOC_CACHE_ALIGNED_FN;
-void* lf_valloc(size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+void* lf_valloc(size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ALLOC_SIZE(1) LFMALLOC_CACHE_ALIGNED_FN;
 // obsolete alignment oos
-void* lf_memalign(size_t alignment, size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+void* lf_memalign(size_t alignment, size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ALLOC_SIZE(2) LFMALLOC_CACHE_ALIGNED_FN;
-void* lf_pvalloc(size_t size) noexcept LFMALLOC_EXPORT LFMALLOC_NOTHROW
+void* lf_pvalloc(size_t size) LFMALLOC_EXPORT LFMALLOC_NOTHROW
     LFMALLOC_ALLOC_SIZE(1) LFMALLOC_CACHE_ALIGNED_FN;
 }
 
