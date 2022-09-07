@@ -7,9 +7,10 @@
 #ifndef __SIZE_CLASSES_H
 #define __SIZE_CLASSES_H
 
+#include <cinttypes>
 #include <cstddef>
 
-#include "defines.h"
+#include "lrmalloc.h"
 
 // number of size classes
 // idx 0 reserved for large size classes

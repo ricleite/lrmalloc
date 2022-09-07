@@ -7,8 +7,8 @@
 #ifndef __TCACHE_H_
 #define __TCACHE_H_
 
-#include "defines.h"
 #include "log.h"
+#include "lrmalloc.h"
 #include "size_classes.h"
 
 struct TCacheBin {

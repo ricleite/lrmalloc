@@ -6,7 +6,6 @@
 
 #include "size_classes.h"
 
-#include "defines.h"
 #include "log.h"
 
 #define SIZE_CLASS_bin_yes(blockSize, pages) { blockSize, pages * PAGE },

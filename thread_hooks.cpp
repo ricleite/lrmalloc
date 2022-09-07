@@ -8,7 +8,6 @@
 #include <dlfcn.h>
 #include <pthread.h>
 
-#include "defines.h"
 #include "size_classes.h"
 #include "tcache.h"
 

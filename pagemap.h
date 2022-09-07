@@ -9,8 +9,8 @@
 
 #include <atomic>
 
-#include "defines.h"
 #include "log.h"
+#include "lrmalloc.h"
 #include "size_classes.h"
 
 // assuming x86-64, for now

@@ -9,7 +9,7 @@
 
 #include <atomic>
 
-#include "defines.h"
+#include "lrmalloc.h"
 #include "log.h"
 
 // superblock states

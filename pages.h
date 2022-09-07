@@ -10,7 +10,7 @@
 #include <cinttypes>
 #include <cstddef>
 
-#include "defines.h"
+#include "lrmalloc.h"
 
 // return page address for page containing a
 #define PAGE_ADDR2BASE(a) ((void*)((uintptr)(a) & ~PAGE_MASK))
