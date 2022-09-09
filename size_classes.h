@@ -19,16 +19,14 @@
 // last size covered by a size class
 // allocations with size > MAX_SZ are not covered by a size class
 #define MAX_SZ ((1 << 13) + (1 << 11) * 3)
+#define SB_SIZE 1024 * 256
 
 // contains size classes
 struct SizeClassData {
 public:
     // size of block
     uint32_t blockSize;
-    // superblock size
-    // always a multiple of page size
-    uint32_t sbSize;
-    // cached number of blocks, equal to sbSize / blockSize
+    // cached number of blocks, equal to SB_SIZE / blockSize
     uint32_t blockNum;
     // number of blocks held by thread-specific caches
     uint32_t cacheBlockNum;

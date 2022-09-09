@@ -18,8 +18,6 @@ int main()
     for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx) {
         SizeClassData& sc = SizeClasses[scIdx];
         // size class large enough to store several elements
-        assert(sc.sbSize >= (sc.blockSize * 2));
-        assert((sc.sbSize % sc.blockSize) == 0);
-        assert(sc.sbSize < (PAGE * PAGE));
+        assert(SB_SIZE >= (sc.blockSize * 2));
     }
 }

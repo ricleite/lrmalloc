@@ -67,10 +67,9 @@ void UpdatePageMap(ProcHeap* heap, char* ptr, Descriptor* desc, size_t scIdx)
     // small allocation, (un)register every page
     // could *technically* optimize if blockSize >>> page,
     //  but let's not worry about that
-    size_t sbSize = heap->GetSizeClass()->sbSize;
-    // sbSize is a multiple of page
-    ASSERT((sbSize & PAGE_MASK) == 0);
-    for (size_t idx = 0; idx < sbSize; idx += PAGE) {
+    // SB_SIZE is a multiple of page
+    ASSERT((SB_SIZE & PAGE_MASK) == 0);
+    for (size_t idx = 0; idx < SB_SIZE; idx += PAGE) {
         sPageMap.SetPageInfo(ptr + idx, info);
     }
 }
@@ -109,7 +108,7 @@ uint32_t ComputeIdx(char* superblock, char* block, size_t scIdx)
     (void)scBlockSize; // suppress unused var warning
 
     ASSERT(block >= superblock);
-    ASSERT(block < superblock + sc->sbSize);
+    ASSERT(block < superblock + SB_SIZE);
     // optimize integer division by allowing the compiler to create
     //  a jump table using size class index
     // compiler can then optimize integer div due to known divisor
@@ -258,7 +257,7 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     desc->heap = heap;
     desc->blockSize = blockSize;
     desc->maxcount = maxcount;
-    desc->superblock = (char*)PageAlloc(sc->sbSize);
+    desc->superblock = (char*)PageAlloc(SB_SIZE);
 
     cache->PushList(desc->superblock, maxcount);
 
@@ -369,7 +368,6 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
 {
     ProcHeap* heap = &sHeaps[scIdx];
     SizeClassData* sc = &SizeClasses[scIdx];
-    uint32_t const sbSize = sc->sbSize;
     uint32_t const blockSize = sc->blockSize;
     // after CAS, desc might become empty and
     //  concurrently reused, so store maxcount
@@ -395,7 +393,7 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
         // same superblock, same descriptor
         while (cache->GetBlockNum() > blockCount) {
             char* ptr = tail + *(ptrdiff_t*)tail + blockSize;
-            if (ptr < superblock || ptr >= superblock + sbSize) {
+            if (ptr < superblock || ptr >= superblock + SB_SIZE) {
                 break; // ptr not in superblock
             }
 
@@ -444,7 +442,7 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
             UnregisterDesc(heap, superblock);
 
             // free superblock
-            PageFree(superblock, heap->GetSizeClass()->sbSize);
+            PageFree(superblock, SB_SIZE);
         } else if (oldAnchor.state == SB_FULL) {
             HeapPushPartial(desc);
         }
