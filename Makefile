@@ -30,7 +30,7 @@ liblrmalloc.so: $(OBJFILES)
 liblrmalloc.a: $(OBJFILES)
 	ar rcs liblrmalloc.a $(OBJFILES)
 
-all_tests: default basic.test
+all_tests: default basic.test size_class_data.test
 
 %.test : test/%.cpp
 	$(CCX) $(DFLAGS) -o $@ $< liblrmalloc.a $(LDFLAGS)

@@ -92,15 +92,15 @@ inline size_t GetSizeClass(size_t size)
     SC(28, 11, 9, 1, no, yes, 5, 9)                                       \
     SC(29, 11, 9, 2, no, yes, 3, 9)                                       \
     SC(30, 11, 9, 3, no, yes, 7, 9)                                       \
-    SC(31, 11, 9, 4, yes, yes, 1, 9)                                      \
+    SC(31, 11, 9, 4, yes, yes, 2, 9)                                      \
                                                                           \
     SC(32, 12, 10, 1, no, yes, 5, no)                                     \
     SC(33, 12, 10, 2, no, yes, 3, no)                                     \
     SC(34, 12, 10, 3, no, yes, 7, no)                                     \
-    SC(35, 12, 10, 4, yes, yes, 2, no)                                    \
+    SC(35, 12, 10, 4, yes, yes, 4, no)                                    \
                                                                           \
     SC(36, 13, 11, 1, no, yes, 5, no)                                     \
-    SC(37, 13, 11, 2, yes, yes, 3, no)                                    \
+    SC(37, 13, 11, 2, yes, yes, 6, no)                                    \
     SC(38, 13, 11, 3, no, yes, 7, no)                                     \
     SC(39, 13, 11, 4, yes, no, 0, no)                                     \
                                                                           \

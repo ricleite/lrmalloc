@@ -20,26 +20,6 @@ size_t SizeClassLookup[MAX_SZ + 1] = { 0 };
 
 void InitSizeClass()
 {
-    // each superblock has to contain several blocks
-    // and it has to contain blocks *perfectly*
-    //  e.g no space left after last block
-    for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx) {
-        SizeClassData& sc = SizeClasses[scIdx];
-        size_t blockSize = sc.blockSize;
-        size_t sbSize = sc.sbSize;
-        // size class large enough to store several elements
-        if (sbSize > blockSize && (sbSize % blockSize) == 0) {
-            continue; // skip
-        }
-
-        // increase superblock size so it can hold >1 elements
-        while (blockSize >= sbSize) {
-            sbSize += sc.sbSize;
-        }
-
-        sc.sbSize = sbSize;
-    }
-
     // increase superblock size if need
     for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx) {
         SizeClassData& sc = SizeClasses[scIdx];
