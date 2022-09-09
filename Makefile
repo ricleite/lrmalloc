@@ -33,7 +33,7 @@ liblrmalloc.a: $(OBJFILES)
 all_tests: default basic.test
 
 %.test : test/%.cpp
-	$(CCX) $(DFLAGS) -o $@ $< lrmalloc.a $(LDFLAGS)
+	$(CCX) $(DFLAGS) -o $@ $< liblrmalloc.a $(LDFLAGS)
 
 clean:
 	rm -f *.so *.o *.a *.test
