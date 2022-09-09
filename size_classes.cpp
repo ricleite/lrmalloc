@@ -21,23 +21,11 @@ size_t SizeClassLookup[MAX_SZ + 1] = { 0 };
 
 void InitSizeClass()
 {
-    // increase superblock size if need
-    for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx) {
-        SizeClassData& sc = SizeClasses[scIdx];
-        size_t sbSize = sc.sbSize;
-        // 16MiB
-        while (sbSize < (PAGE * PAGE)) {
-            sbSize += sc.sbSize;
-        }
-
-        sc.sbSize = sbSize;
-    }
-
     // fill blockNum and cacheBlockNum
     for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx) {
         SizeClassData& sc = SizeClasses[scIdx];
         // blockNum calc
-        sc.blockNum = sc.sbSize / sc.blockSize;
+        sc.blockNum = SB_SIZE / sc.blockSize;
         // cacheBlockNum calc
         sc.cacheBlockNum = sc.blockNum * 1;
         ASSERT(sc.blockNum > 0);
