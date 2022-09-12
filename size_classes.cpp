@@ -24,7 +24,7 @@ void InitSizeClass()
     for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx) {
         SizeClassData& sc = SizeClasses[scIdx];
         size_t sbSize = sc.sbSize;
-        // 2MB
+        // 16MiB
         while (sbSize < (PAGE * PAGE)) {
             sbSize += sc.sbSize;
         }
