@@ -30,6 +30,9 @@ void* PageAllocOvercommit(size_t size)
     void* ptr = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
     if (ptr == MAP_FAILED) {
         ptr = nullptr;
+    } else {
+        // exclude such large maps from core dumps as they become unusable otherwise
+        madvise(ptr, size, MADV_DONTDUMP);
     }
 
     return ptr;
