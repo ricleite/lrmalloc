@@ -40,7 +40,7 @@ void InitSizeClass()
         // cacheBlockNum calc
         sc.cacheBlockNum = sc.blockNum * 1;
         ASSERT(sc.blockNum > 0);
-        ASSERT(sc.blockNum < MAX_BLOCK_NUM);
+        ASSERT(sc.blockNum <= MAX_BLOCK_NUM);
         ASSERT(sc.blockNum >= sc.cacheBlockNum);
     }
 
