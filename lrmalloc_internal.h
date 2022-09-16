@@ -31,7 +31,7 @@ struct SizeClassData;
 struct TCacheBin;
 
 #define LG_MAX_BLOCK_NUM 31
-#define MAX_BLOCK_NUM (2ul << LG_MAX_BLOCK_NUM)
+#define MAX_BLOCK_NUM (1ul << LG_MAX_BLOCK_NUM)
 
 struct Anchor {
     SuperblockState state : 2;
