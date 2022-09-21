@@ -7,6 +7,8 @@
 #ifndef __LFMALLOC_H
 #define __LFMALLOC_H
 
+#include <stddef.h>
+
 // a cache line is 64 bytes
 #define LG_CACHELINE 6
 // a page is 4KB
