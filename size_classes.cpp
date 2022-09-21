@@ -4,6 +4,7 @@
  * details.
  */
 
+#include "lrmalloc_internal.h"
 #include "size_classes.h"
 
 #include "log.h"
