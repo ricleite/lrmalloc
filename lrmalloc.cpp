@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cassert>
+#include <cstddef>
 #include <cstring>
 
 // for ENOMEM
@@ -259,17 +260,7 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     desc->maxcount = maxcount;
     desc->superblock = (char*)PageAlloc(sc->sbSize);
 
-    // prepare block list
-    char* superblock = desc->superblock;
-    for (uint32_t idx = 0; idx < maxcount - 1; ++idx) {
-        char* block = superblock + idx * blockSize;
-        char* next = superblock + (idx + 1) * blockSize;
-        *(char**)block = next;
-    }
-
-    // push blocks to cache
-    char* block = superblock; // first block
-    cache->PushList(block, maxcount);
+    cache->PushList(desc->superblock, maxcount);
 
     Anchor anchor;
     anchor.avail = maxcount;
@@ -403,7 +394,7 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
         // check if next cache blocks are in the same superblock
         // same superblock, same descriptor
         while (cache->GetBlockNum() > blockCount) {
-            char* ptr = *(char**)tail;
+            char* ptr = tail + *(ptrdiff_t*)tail + blockSize;
             if (ptr < superblock || ptr >= superblock + sbSize) {
                 break; // ptr not in superblock
             }
@@ -413,7 +404,7 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
             tail = ptr;
         }
 
-        cache->PopList(*(char**)tail, blockCount);
+        cache->PopList(tail + *(ptrdiff_t*)tail + blockSize, blockCount);
 
         // add list to desc, update anchor
         uint32_t idx = ComputeIdx(superblock, head, scIdx);
@@ -423,7 +414,7 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
         do {
             // update anchor.avail
             char* next = (char*)(superblock + oldAnchor.avail * blockSize);
-            *(char**)tail = next;
+            *(ptrdiff_t*)tail = next - tail - blockSize;
 
             newAnchor = oldAnchor;
             newAnchor.avail = idx;
@@ -523,7 +514,7 @@ void* do_malloc(size_t size)
         FillCache(scIdx, cache);
     }
 
-    return cache->PopBlock();
+    return cache->PopBlock(scIdx);
 }
 
 LFMALLOC_INLINE
@@ -617,7 +608,7 @@ void* do_aligned_alloc(size_t alignment, size_t size)
         FillCache(scIdx, cache);
     }
 
-    return cache->PopBlock();
+    return cache->PopBlock(scIdx);
 }
 
 LFMALLOC_INLINE
@@ -661,7 +652,7 @@ void do_free(void* ptr)
         FlushCache(scIdx, cache);
     }
 
-    cache->PushBlock((char*)ptr);
+    cache->PushBlock((char*)ptr, scIdx);
 }
 
 extern "C" void* lf_malloc(size_t size) noexcept
