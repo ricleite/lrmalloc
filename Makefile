@@ -32,7 +32,7 @@ liblrmalloc.a: $(OBJFILES)
 
 all_tests: default basic.test size_class_data.test
 
-%.test : test/%.cpp
+%.test : test/%.cpp liblrmalloc.a
 	$(CCX) $(DFLAGS) -o $@ $< liblrmalloc.a $(LDFLAGS)
 
 clean:
