@@ -16,6 +16,7 @@
 #include "log.h"
 #include "lrmalloc.h"
 #include "lrmalloc_internal.h"
+#include "mapcache.h"
 #include "pagemap.h"
 #include "pages.h"
 #include "size_classes.h"
@@ -40,7 +41,6 @@ std::atomic<DescriptorNode> sAvailDesc({ nullptr });
 bool sMallocInit = false;
 // heaps, one heap per size class
 ProcHeap sHeaps[MAX_SZ_IDX];
-
 
 // (un)register descriptor pages with pagemap
 // all pages used by the descriptor will point to desc in
@@ -257,7 +257,7 @@ void MallocFromNewSB(size_t scIdx, TCacheBin* cache, size_t& blockNum)
     desc->heap = heap;
     desc->blockSize = blockSize;
     desc->maxcount = maxcount;
-    desc->superblock = (char*)PageAlloc(SB_SIZE);
+    desc->superblock = sMapCache.Alloc();
 
     cache->PushList(desc->superblock, maxcount);
 
@@ -442,7 +442,7 @@ void FlushCache(size_t scIdx, TCacheBin* cache)
             UnregisterDesc(heap, superblock);
 
             // free superblock
-            PageFree(superblock, SB_SIZE);
+            sMapCache.Free(superblock);
         } else if (oldAnchor.state == SB_FULL) {
             HeapPushPartial(desc);
         }

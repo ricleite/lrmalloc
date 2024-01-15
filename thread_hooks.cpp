@@ -10,6 +10,7 @@
 
 #include "size_classes.h"
 #include "tcache.h"
+#include "mapcache.h"
 
 // handle process init/exit hooks
 pthread_key_t destructor_key;
@@ -40,6 +41,7 @@ void lf_malloc_thread_finalize()
     for (size_t scIdx = 1; scIdx < MAX_SZ_IDX; ++scIdx) {
         FlushCache(scIdx, &TCache[scIdx]);
     }
+    sMapCache.Flush();
 }
 
 LFMALLOC_ATTR(constructor)
