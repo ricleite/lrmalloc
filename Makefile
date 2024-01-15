@@ -15,7 +15,7 @@ CXXFLAGS=-shared -fPIC -std=gnu++14 -O2 -Wall $(DFLAGS) \
 
 LDFLAGS=-ldl -pthread
 
-OBJFILES=lrmalloc.o size_classes.o pages.o pagemap.o tcache.o thread_hooks.o
+OBJFILES=lrmalloc.o size_classes.o pages.o pagemap.o tcache.o thread_hooks.o mapcache.o
 
 default: liblrmalloc.so liblrmalloc.a
 
