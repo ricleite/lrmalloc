@@ -7,13 +7,13 @@ PREFIX?=/usr/local
 
 CCX=g++
 DFLAGS=-ggdb -g -fno-omit-frame-pointer
-CXXFLAGS=-shared -fPIC -std=gnu++14 -O2 -Wall $(DFLAGS) \
+CXXFLAGS=-fPIC -std=gnu++14 -O2 -Wall $(DFLAGS) \
 	-fno-builtin-malloc -fno-builtin-free -fno-builtin-realloc \
 	-fno-builtin-calloc -fno-builtin-cfree -fno-builtin-memalign \
 	-fno-builtin-posix_memalign -fno-builtin-valloc -fno-builtin-pvalloc \
 	-fno-builtin -fsized-deallocation -fno-exceptions
 
-LDFLAGS=-ldl -pthread
+LDFLAGS=-latomic -ldl -pthread
 
 OBJFILES=lrmalloc.o size_classes.o pages.o pagemap.o tcache.o thread_hooks.o mapcache.o
 
@@ -22,10 +22,10 @@ default: liblrmalloc.so liblrmalloc.a
 test: all_tests
 
 %.o : %.cpp
-	$(CCX) $(CXXFLAGS) -c -o $@ $< $(LDFLAGS)
+	$(CCX) $(CXXFLAGS) -c -o $@ $<
 
 liblrmalloc.so: $(OBJFILES)
-	$(CCX) $(CXXFLAGS) -o liblrmalloc.so $(OBJFILES) $(LDFLAGS)
+	$(CCX) $(CXXFLAGS) -shared -o liblrmalloc.so $(OBJFILES) $(LDFLAGS)
 
 liblrmalloc.a: $(OBJFILES)
 	ar rcs liblrmalloc.a $(OBJFILES)
